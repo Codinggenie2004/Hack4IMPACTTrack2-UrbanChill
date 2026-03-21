@@ -321,9 +321,11 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
       } else if (activeTab === 'overview' || isSelected) {
         // ── Our colored rectangle for regular grid zones ──────────────────────
+        const halfLatSpan = (zone.latSpan || 0.06) / 2;
+        const halfLngSpan = (zone.lngSpan || 0.06) / 2;
         const bounds = [
-          [zone.lat - HALF_SPAN, zone.lng - HALF_SPAN],
-          [zone.lat + HALF_SPAN, zone.lng + HALF_SPAN],
+          [zone.lat - halfLatSpan, zone.lng - halfLngSpan],
+          [zone.lat + halfLatSpan, zone.lng + halfLngSpan],
         ];
 
         const rect = L.rectangle(bounds, {

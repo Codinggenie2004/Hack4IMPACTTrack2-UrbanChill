@@ -341,12 +341,11 @@ const GENERIC_ZONE_PREFIXES = [
   'Mall', 'Bridge', 'Colony', 'Nagar', 'Bazaar'
 ];
 
-function generateZones(cityKey, centerLat, centerLng) {
+function generateZones(cityKey, centerLat, centerLng, latSpan = 0.06, lngSpan = 0.06) {
   const zones = [];
   const GRID = 5;
-  const SPREAD = 0.06;
-  const startLat = centerLat - (GRID / 2) * SPREAD;
-  const startLng = centerLng - (GRID / 2) * SPREAD;
+  const startLat = centerLat - (GRID / 2) * latSpan;
+  const startLng = centerLng - (GRID / 2) * lngSpan;
 
   const seed = cityKey.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   const cityNamesList = CITY_ZONE_NAMES[cityKey] || GENERIC_ZONE_PREFIXES;
@@ -359,8 +358,8 @@ function generateZones(cityKey, centerLat, centerLng) {
         return x - Math.floor(x);
       };
 
-      const lat = startLat + row * SPREAD + (pseudoRand(1) - 0.5) * 0.01;
-      const lng = startLng + col * SPREAD + (pseudoRand(2) - 0.5) * 0.01;
+      const lat = startLat + row * latSpan + (pseudoRand(1) - 0.5) * latSpan * 0.1;
+      const lng = startLng + col * lngSpan + (pseudoRand(2) - 0.5) * lngSpan * 0.1;
       
       const greenCover = +(5 + pseudoRand(4) * 55).toFixed(1);
       const density = Math.round(3000 + pseudoRand(5) * 45000);
@@ -373,6 +372,8 @@ function generateZones(cityKey, centerLat, centerLng) {
         name: zoneName,
         lat,
         lng,
+        latSpan,
+        lngSpan,
         greenCover,
         density,
         landUse,
@@ -416,8 +417,21 @@ app.get('/api/city/:name', async (req, res) => {
       zoom: 12
     };
 
+    let latSpan = 0.06;
+    let lngSpan = 0.06;
+    if (geocodeData[0].boundingbox) {
+      const bbox = geocodeData[0].boundingbox.map(parseFloat);
+      // bbox: [latMin, latMax, lonMin, lonMax]
+      const totalLat = Math.abs(bbox[1] - bbox[0]);
+      const totalLng = Math.abs(bbox[3] - bbox[2]);
+      
+      // Limit to reasonable spans (between 0.005 and 0.12 degrees per cell)
+      latSpan = Math.max(0.005, Math.min(0.12, totalLat / 5));
+      lngSpan = Math.max(0.005, Math.min(0.12, totalLng / 5));
+    }
+
     // Generate grid coordinates
-    const zones = generateZones(displayName.toLowerCase(), config.lat, config.lng);
+    const zones = generateZones(displayName.toLowerCase(), config.lat, config.lng, latSpan, lngSpan);
     const lats = zones.map(z => z.lat).join(',');
     const lngs = zones.map(z => z.lng).join(',');
 
