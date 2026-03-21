@@ -1,7 +1,7 @@
 export function getRisk(temp) {
-  if (temp < 32) return { label: 'LOW', color: '#3fb950' };
-  if (temp < 36) return { label: 'MODERATE', color: '#d29922' };
-  if (temp < 40) return { label: 'HIGH', color: '#f85149' };
+  if (temp < 28) return { label: 'LOW', color: '#3fb950' };
+  if (temp < 33) return { label: 'MODERATE', color: '#d29922' };
+  if (temp < 38) return { label: 'HIGH', color: '#f85149' };
   return { label: 'CRITICAL', color: '#ff006e' };
 }
 

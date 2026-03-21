@@ -470,33 +470,90 @@ app.get('/api/city/:name', async (req, res) => {
     const lngs = zones.map(z => z.lng).join(',');
 
     try {
-      // Fetch real weather data for ALL 25 zones in parallel
-      const [weatherRes, aqiRes] = await Promise.all([
-        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,relative_humidity_2m&timezone=auto`),
-        fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lngs}&current=european_aqi&timezone=auto`)
-      ]);
+      // Fetch real weather from OWM (if key set) or Open-Meteo as fallback
+      const owmKey = process.env.OWM_API_KEY;
+      if (owmKey) {
+        // OWM allows up to 60 calls/min on free tier — fetch all 25 zones in parallel
+        const owmResults = await Promise.all(
+          zones.map(z =>
+            fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${z.lat}&lon=${z.lng}&appid=${owmKey}&units=metric`)
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null)
+          )
+        );
+        owmResults.forEach((data, i) => {
+          if (data && data.main) {
+            zones[i].temp = data.main.temp;
+            zones[i].humidity = data.main.humidity;
+          }
+        });
+      } else {
+        // Open-Meteo batch fallback
+        const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,relative_humidity_2m&timezone=auto`);
+        const weatherData = await weatherRes.json();
+        zones.forEach((zone, i) => {
+          if (Array.isArray(weatherData) && weatherData[i] && weatherData[i].current) {
+            zone.temp = weatherData[i].current.temperature_2m || 25;
+            zone.humidity = weatherData[i].current.relative_humidity_2m || 50;
+          } else if (weatherData.current) {
+            zone.temp = weatherData.current.temperature_2m || 25;
+            zone.humidity = weatherData.current.relative_humidity_2m || 50;
+          }
+        });
+      }
 
-      const weatherData = await weatherRes.json();
+      // ── Apply Urban Heat Island (UHI) Variation ──
+      // Real weather APIs often return the same temp for points 2-5km apart.
+      // We simulate local micro-climates based on land use and density.
+      zones.forEach(zone => {
+        let uhiOffset = 0;
+        // Density impact (up to +2.5°C for extreme high density)
+        uhiOffset += (zone.density / 50000) * 2.5;
+        // Land use impact
+        if (zone.landUse === 'Industrial') uhiOffset += 2.0;
+        if (zone.landUse === 'Commercial') uhiOffset += 1.2;
+        if (zone.landUse === 'Mixed Use') uhiOffset += 0.5;
+        if (zone.landUse === 'Green Space') uhiOffset -= 1.5;
+        
+        // Green cover impact
+        uhiOffset -= (zone.greenCover / 100) * 3.0;
+
+        // Apply and round
+        zone.temp = +(zone.temp + uhiOffset).toFixed(1);
+      });
+
+      // Fetch AQI for all zones (Open-Meteo US AQI — best free coverage for India)
+      const aqiRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lngs}&current=us_aqi,pm2_5&timezone=auto`);
       const aqiData = await aqiRes.json();
 
-      // Populate zones with real data
       zones.forEach((zone, i) => {
-        if (Array.isArray(weatherData) && weatherData[i] && weatherData[i].current) {
-          zone.temp = weatherData[i].current.temperature_2m || 25;
-          zone.humidity = weatherData[i].current.relative_humidity_2m || 50;
-        } else if (weatherData.current) { // Fallback if single element
-          zone.temp = weatherData.current.temperature_2m || 25;
-          zone.humidity = weatherData.current.relative_humidity_2m || 50;
+        // Try us_aqi first, then pm2_5 conversion, then seeded realistic fallback
+        let aqiValue = null;
+        const aqiItem = Array.isArray(aqiData) ? aqiData[i] : aqiData;
+        if (aqiItem && aqiItem.current) {
+          if (aqiItem.current.us_aqi !== null && aqiItem.current.us_aqi !== undefined) {
+            aqiValue = aqiItem.current.us_aqi;
+          } else if (aqiItem.current.pm2_5 !== null && aqiItem.current.pm2_5 !== undefined) {
+            // Approx PM2.5 to US AQI conversion
+            const pm = aqiItem.current.pm2_5;
+            aqiValue = pm <= 12 ? Math.round(pm * 4.17)
+              : pm <= 35.4 ? Math.round(50 + (pm - 12) * 2.10)
+              : pm <= 55.4 ? Math.round(100 + (pm - 35.4) * 2.50)
+              : Math.round(150 + (pm - 55.4) * 1.47);
+          }
         }
 
-        if (Array.isArray(aqiData) && aqiData[i] && aqiData[i].current && aqiData[i].current.european_aqi !== null) {
-          zone.aqi = aqiData[i].current.european_aqi;
-        } else if (aqiData.current && aqiData.current.european_aqi !== null) { // Fallback if single element
-          zone.aqi = aqiData.current.european_aqi;
-        } else {
-          // Fallback AQI if entirely missing
-          zone.aqi = Math.round(50 + (zone.temp > 30 ? (zone.temp - 30) * 5 : 0) + Math.random() * 20);
+        if (aqiValue === null) {
+          // Seeded deterministic fallback — realistic for dense Indian urban areas
+          const seed = zone.lat * 1000 + zone.lng * 100 + i;
+          const pseudoRand = ((Math.sin(seed * 127.1 + i * 311.7) * 43758.5453) % 1 + 1) % 1;
+          const baseAqi = zone.temp > 35 ? 160 : zone.temp > 30 ? 110 : 75;
+          const densityBonus = zone.density > 30000 ? 60 : zone.density > 15000 ? 30 : 0;
+          const greenDiscount = zone.greenCover > 30 ? -30 : zone.greenCover > 15 ? -10 : 0;
+          aqiValue = Math.round(baseAqi + densityBonus + greenDiscount + pseudoRand * 40);
         }
+
+        zone.aqi = Math.max(10, Math.min(500, aqiValue));
       });
     } catch (apiErr) {
       console.error('Failed to fetch real data for grid, using fallback', apiErr);
@@ -648,7 +705,7 @@ app.get('/api/reports/:userId', authenticateToken, async (req, res) => {
   }
 });
 
-// --- REAL-TIME TEMPERATURE BY COORDINATES ---
+// --- REAL-TIME TEMPERATURE BY COORDINATES (OpenWeatherMap) ---
 
 app.get('/api/temperature', async (req, res) => {
   try {
@@ -664,7 +721,33 @@ app.get('/api/temperature', async (req, res) => {
       return res.status(400).json({ error: 'Invalid lat/lng values' });
     }
 
-    // Run Open-Meteo (Weather+Wind) + Nominatim reverse geocoding in parallel
+    const owmKey = process.env.OWM_API_KEY;
+
+    if (owmKey) {
+      // ── OWM path: accurate real-time data including weather description & icon
+      const owmUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${parsedLat}&lon=${parsedLng}&appid=${owmKey}&units=metric`;
+      const owmData = await fetch(owmUrl).then(r => r.ok ? r.json() : null).catch(() => null);
+
+      if (owmData && owmData.main) {
+        const locationName = owmData.name || 'Unknown location';
+        const country = owmData.sys?.country || '';
+        return res.json({
+          lat: parsedLat,
+          lng: parsedLng,
+          temp: owmData.main.temp,
+          feelsLike: owmData.main.feels_like,
+          humidity: owmData.main.humidity,
+          windSpeed: owmData.wind?.speed ? +(owmData.wind.speed * 3.6).toFixed(1) : 0, // m/s → km/h
+          description: owmData.weather?.[0]?.description || 'unknown',
+          icon: owmData.weather?.[0]?.icon || '01d',
+          locationName,
+          country,
+          realtime: true,
+        });
+      }
+    }
+
+    // ── Fallback: Open-Meteo + Nominatim (when OWM key is missing or call failed)
     const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${parsedLat}&longitude=${parsedLng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&timezone=auto`;
     const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?lat=${parsedLat}&lon=${parsedLng}&format=json&zoom=16&addressdetails=1`;
 
@@ -673,48 +756,29 @@ app.get('/api/temperature', async (req, res) => {
       fetch(nominatimUrl, { headers: { 'User-Agent': 'HeatGuard/1.0' } }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
-    let temp, humidity, feelsLike, windSpeed, description, icon;
+    let temp = 30, humidity = 50, feelsLike = 32, windSpeed = 10, description = 'unknown', icon = '01d';
 
     if (meteoData && meteoData.current) {
       temp = meteoData.current.temperature_2m;
       humidity = meteoData.current.relative_humidity_2m;
       feelsLike = meteoData.current.apparent_temperature;
       windSpeed = meteoData.current.wind_speed_10m;
-      
-      // Simple WMO code mapping for Open-Meteo
       const code = meteoData.current.weather_code;
       if (code <= 3) { description = 'clear/partly cloudy'; icon = '01d'; }
       else if (code <= 48) { description = 'fog/mist'; icon = '50d'; }
       else if (code <= 69) { description = 'rain/drizzle'; icon = '09d'; }
       else if (code <= 79) { description = 'snow'; icon = '13d'; }
       else { description = 'storm/heavy rain'; icon = '11d'; }
-    } else {
-      // API failure fallback
-      temp = 30; humidity = 50; feelsLike = 32; windSpeed = 10; description = 'unknown'; icon = '01d';
     }
 
-    // Build precise location name from Nominatim
-    let locationName = 'Unknown location';
-    let country = '';
+    let locationName = 'Unknown location', country = '';
     if (nominatimData && nominatimData.address) {
       const addr = nominatimData.address;
       locationName = addr.neighbourhood || addr.suburb || addr.quarter || addr.village || addr.town || addr.city || addr.county || 'Unknown';
       country = addr.country_code ? addr.country_code.toUpperCase() : '';
     }
 
-    return res.json({
-      lat: parsedLat,
-      lng: parsedLng,
-      temp,
-      feelsLike,
-      humidity,
-      windSpeed,
-      description,
-      icon,
-      locationName,
-      country,
-      realtime: true, // Always real data now via Open-Meteo!
-    });
+    return res.json({ lat: parsedLat, lng: parsedLng, temp, feelsLike, humidity, windSpeed, description, icon, locationName, country, realtime: !!owmKey });
   } catch (error) {
     console.error('/api/temperature error:', error);
     res.status(500).json({ error: error.message });
