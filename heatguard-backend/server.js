@@ -796,11 +796,12 @@ if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../heatguard/dist');
   app.use(express.static(distPath));
   
-  // Catch-all route to serve the frontend for any non-API request
-  app.get('(.*)', (req, res) => {
+  // Catch-all to serve the frontend for any non-API request (Express 5 compatible)
+  app.use((req, res, next) => {
     if (!req.path.startsWith('/api/')) {
-      res.sendFile(path.join(distPath, 'index.html'));
+      return res.sendFile(path.join(distPath, 'index.html'));
     }
+    next();
   });
 }
 
