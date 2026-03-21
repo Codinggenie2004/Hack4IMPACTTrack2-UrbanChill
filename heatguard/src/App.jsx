@@ -111,6 +111,13 @@ export default function App() {
     handleZoneClick(zone);
   }, [handleZoneClick]);
 
+  const handleCloseZone = useCallback(() => {
+    setSelectedZone(null);
+    setRecommendations(null);
+    // Remove the custom pin zone from the map when closing analysis
+    setZones(prev => prev.filter(z => !z.isCustomPin));
+  }, []);
+
   const handleMapClick = useCallback(async (lat, lng) => {
     try {
       setLoading(true);
@@ -159,6 +166,7 @@ export default function App() {
           cityName={cityName}
           onZoneSelect={handleZoneSelectFromOverview}
           afterMode={afterMode}
+          onCloseZone={handleCloseZone}
         />
       </div>
       <BottomBar afterMode={afterMode} onToggle={setAfterMode} lastUpdated={lastUpdated} />

@@ -137,20 +137,16 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     L.tileLayer(TILE_URL, TILE_OPTS).addTo(map);
     mapInstanceRef.current = map;
 
-    // Click-anywhere: temperature popup (our feature) OR custom pin (teammate feature)
+    // Click-anywhere: show OWM temperature popup card AND call onMapClick for sidebar
     map.on('click', async (e) => {
       const { lat, lng } = e.latlng;
 
-      // Zone rectangle clicks are already handled on the rect itself
-      if (e.originalEvent._zoneClick) return;
-
-      // If App.jsx has an onMapClick handler (teammate's pin feature), call it
+      // Always notify App.jsx (sidebar pin zone update)
       if (onMapClickRef.current) {
         onMapClickRef.current(lat, lng);
-        return; // let App handle it — shows pin zone in sidebar
       }
 
-      // Otherwise fall back to our click-anywhere temperature popup
+      // Always show the OWM temperature popup card with accurate Nominatim location
       if (clickMarkerRef.current) { map.removeLayer(clickMarkerRef.current); clickMarkerRef.current = null; }
       if (clickPopupRef.current) { map.removeLayer(clickPopupRef.current); clickPopupRef.current = null; }
 
@@ -167,7 +163,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
         closeButton: true,
         autoClose: false,
         closeOnClick: false,
-        maxWidth: 280,
+        maxWidth: 290,
         offset: [0, -10],
       })
         .setLatLng([lat, lng])
@@ -223,6 +219,17 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
       const risk = getRisk(temp);
       const isSelected = selectedZone && selectedZone.id === zone.id;
 
+      if (!selectedZone) {
+         if (clickPopupRef.current) {
+            map.removeLayer(clickPopupRef.current);
+            clickPopupRef.current = null;
+         }
+         if (clickMarkerRef.current) {
+            map.removeLayer(clickMarkerRef.current);
+            clickMarkerRef.current = null;
+         }
+      }
+
       if (zone.isCustomPin) {
         // ── Teammate's custom SVG pin marker for dropped pins ────────────────
         const pinHtml = `
@@ -253,7 +260,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
         );
 
         marker.on('click', (e) => {
-          e.originalEvent._zoneClick = true;
+          L.DomEvent.stopPropagation(e);
           onZoneClick(zone);
         });
 
@@ -288,7 +295,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
         );
 
         rect.on('click', (e) => {
-          e.originalEvent._zoneClick = true;
+          L.DomEvent.stopPropagation(e);
           onZoneClick(zone);
         });
 
