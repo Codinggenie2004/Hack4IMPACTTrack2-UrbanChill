@@ -237,6 +237,13 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     const map = mapInstanceRef.current;
     if (!map) return;
 
+    // Create a dedicated high-z-index pane for routes so heat grid zones never overlap it
+    if (!map.getPane('routePane')) {
+      map.createPane('routePane');
+      map.getPane('routePane').style.zIndex = 450;
+      map.getPane('routePane').style.pointerEvents = 'none';
+    }
+
     if (routeLayerRef.current) {
       map.removeLayer(routeLayerRef.current);
       routeLayerRef.current = null;
@@ -244,7 +251,8 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
     if (routeGeoJSON) {
       routeLayerRef.current = L.geoJSON(routeGeoJSON, {
-        style: { color: '#3fb950', weight: 6, opacity: 0.9 }
+        pane: 'routePane',
+        style: { color: '#3fb950', weight: 8, opacity: 1, dashArray: '12, 10' }
       }).addTo(map);
       map.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.5 });
     }
