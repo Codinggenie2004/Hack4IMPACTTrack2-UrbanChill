@@ -341,14 +341,17 @@ const GENERIC_ZONE_PREFIXES = [
   'Mall', 'Bridge', 'Colony', 'Nagar', 'Bazaar'
 ];
 
-function generateZones(cityKey, centerLat, centerLng, latSpan = 0.06, lngSpan = 0.06) {
+function generateZones(cityKey, centerLat, centerLng, latSpan = 0.06, lngSpan = 0.06, dynamicNames = null, displayName = "") {
   const zones = [];
   const GRID = 5;
   const startLat = centerLat - (GRID / 2) * latSpan;
   const startLng = centerLng - (GRID / 2) * lngSpan;
 
   const seed = cityKey.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const cityNamesList = CITY_ZONE_NAMES[cityKey] || GENERIC_ZONE_PREFIXES;
+  
+  // Use dynamically fetched local suburbs/villages if available, else padded generic names
+  let cityNamesList = dynamicNames || CITY_ZONE_NAMES[cityKey] || GENERIC_ZONE_PREFIXES.map(p => `${displayName} ${p}`);
+
 
   for (let row = 0; row < GRID; row++) {
     for (let col = 0; col < GRID; col++) {
@@ -419,6 +422,8 @@ app.get('/api/city/:name', async (req, res) => {
 
     let latSpan = 0.06;
     let lngSpan = 0.06;
+    let localNames = null;
+
     if (geocodeData[0].boundingbox) {
       const bbox = geocodeData[0].boundingbox.map(parseFloat);
       // bbox: [latMin, latMax, lonMin, lonMax]
@@ -428,10 +433,37 @@ app.get('/api/city/:name', async (req, res) => {
       // Limit to reasonable spans (between 0.005 and 0.12 degrees per cell)
       latSpan = Math.max(0.005, Math.min(0.12, totalLat / 5));
       lngSpan = Math.max(0.005, Math.min(0.12, totalLng / 5));
+
+      // Attempt to fetch authentic local neighborhoods via Overpass API
+      if (!CITY_ZONE_NAMES[displayName.toLowerCase()]) {
+        try {
+          const query = `[out:json][timeout:3];(node["place"~"suburb|town|village|hamlet|neighbourhood"](${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]}););out 30;`;
+          const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+          
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000); // 3 sec timeout
+          
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeout);
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.elements) {
+              let names = data.elements.map(e => e.tags?.name || e.tags?.['name:en']).filter(Boolean);
+              names = [...new Set(names)]; // Remove exact duplicates
+              if (names.length >= 5) {
+                localNames = names;
+              }
+            }
+          }
+        } catch (err) {
+          console.log(`Failed to fetch local names for ${displayName}:`, err.message);
+        }
+      }
     }
 
     // Generate grid coordinates
-    const zones = generateZones(displayName.toLowerCase(), config.lat, config.lng, latSpan, lngSpan);
+    const zones = generateZones(displayName.toLowerCase(), config.lat, config.lng, latSpan, lngSpan, localNames, displayName);
     const lats = zones.map(z => z.lat).join(',');
     const lngs = zones.map(z => z.lng).join(',');
 
