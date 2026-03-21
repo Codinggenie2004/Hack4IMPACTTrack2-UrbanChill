@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { exportReport } from '../utils/pdfExport';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '' : 'http://localhost:5000');
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export default function HistoryPanel() {
   const { user, token } = useContext(AuthContext);
