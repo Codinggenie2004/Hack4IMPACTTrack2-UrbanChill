@@ -517,7 +517,7 @@ app.post('/api/pin', async (req, res) => {
 // --- Route Plan API ---
 function getMockRoutePlan(source, dest, mode) {
   return {
-    route_analysis: "Temperature analysis complete. The standard route is hot, so we have simulated a path prioritizing tree-lined streets and shaded avenues to minimize heat exposure.",
+    route_analysis: "⚠️ AI OFFLINE: You have not provided a GEMINI_API_KEY in the .env file! This is a hardcoded offline fallback response.",
     water_to_carry: "Carry at least 1.5 Liters of water from home.",
     hydration_stops: [
       "Stop near local markets for Nariyal Pani (Coconut Water).",
@@ -538,13 +538,88 @@ function getMockRoutePlan(source, dest, mode) {
 
 app.post('/api/route-plan', async (req, res) => {
   try {
-    const { source, destination, mode, currentTemp } = req.body;
+    const { source, destination, mode, currentTemp, startLat, startLng, endLat, endLng, routePolyline } = req.body;
     if (!source || !destination) return res.status(400).json({ error: 'Source and destination required' });
+
+    let pois = [];
+    if (startLat && startLng && endLat && endLng) {
+      try {
+        let overpassUrl = '';
+        const distanceNumber = distance ? parseInt(distance, 10) : 0;
+        
+        // If route is very long (> 70km), Overpass might time out searching thousands of square kilometers.
+        if (distanceNumber > 70000) {
+           // Skip Overpass for hyper-long intercity routes to prevent map freezing
+           throw new Error("Route too long for Overpass API, using smart polyline fallback.");
+        }
+
+        if (routePolyline) {
+          overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];(node(around:250,${routePolyline})["amenity"~"drinking_water|cafe|restaurant|pharmacy"];node(around:250,${routePolyline})["shop"~"convenience|supermarket|beverages|water|chemist"];node(around:250,${routePolyline})["tourism"~"hotel|guest_house"];);out 12;`;
+        } else {
+          const midLat = (parseFloat(startLat) + parseFloat(endLat)) / 2;
+          const midLng = (parseFloat(startLng) + parseFloat(endLng)) / 2;
+          overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];(node(around:3500,${midLat},${midLng})["amenity"~"drinking_water|cafe|restaurant|pharmacy"];node(around:3500,${midLat},${midLng})["shop"~"convenience|supermarket|beverages|water|chemist"];node(around:3500,${midLat},${midLng})["tourism"~"hotel|guest_house"];);out 6;`;
+        }
+        
+        // Using AbortController for fetch timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const ovRes = await fetch(overpassUrl, { signal: controller.signal }).catch(() => null);
+        clearTimeout(timeoutId);
+
+        if (ovRes && ovRes.ok) {
+          const ovData = await ovRes.json();
+          if (ovData && ovData.elements && ovData.elements.length > 0) {
+            pois = ovData.elements.map(el => {
+              const rType = el.tags.amenity || el.tags.shop || el.tags.tourism || 'drinking_water';
+              return {
+                name: el.tags.name || (rType === 'hotel' ? 'Local Hotel' : rType === 'convenience' ? 'Local Shop' : 'Water / Rest Point'),
+                type: rType,
+                lat: el.lat,
+                lng: el.lon
+              };
+            });
+          }
+        }
+      } catch(e) {
+        console.error("Overpass logic bypass/error:", e.message);
+      }
+      
+      // Smart Fallback interpolation if Overpass is blocked or empty
+      if (pois.length === 0) {
+         if (routePolyline) {
+            // Drop smart pins precisely ALONG the curved polyline to match highways
+            const polyArr = routePolyline.split(',');
+            const pathNodes = [];
+            for (let i = 0; i < polyArr.length; i += 2) {
+               if (polyArr[i+1]) pathNodes.push({ lat: parseFloat(polyArr[i]), lng: parseFloat(polyArr[i+1]) });
+            }
+            if (pathNodes.length >= 4) {
+               pois.push({ name: "Highway Dhaba / Water", type: "drinking_water", lat: pathNodes[Math.floor(pathNodes.length*0.25)].lat, lng: pathNodes[Math.floor(pathNodes.length*0.25)].lng });
+               pois.push({ name: "Midway Rest Stop & Cafe", type: "cafe", lat: pathNodes[Math.floor(pathNodes.length*0.50)].lat, lng: pathNodes[Math.floor(pathNodes.length*0.50)].lng });
+               pois.push({ name: "Medical/Pharmacy Shop", type: "chemist", lat: pathNodes[Math.floor(pathNodes.length*0.75)].lat, lng: pathNodes[Math.floor(pathNodes.length*0.75)].lng });
+               if (distance && parseInt(distance,10) > 100000) {
+                  pois.push({ name: "Motel & Lodge (Night Halt)", type: "hotel", lat: pathNodes[Math.floor(pathNodes.length*0.85)].lat, lng: pathNodes[Math.floor(pathNodes.length*0.85)].lng });
+               }
+            }
+         }
+         
+         // If polyline fails completely, do a simple straight-line 
+         if (pois.length === 0) {
+           pois = [
+             { name: "Local Shop (Water/ORS)", type: "drinking_water", lat: parseFloat(startLat) + (parseFloat(endLat) - parseFloat(startLat))*0.35, lng: parseFloat(startLng) + (parseFloat(endLng) - parseFloat(startLng))*0.35 },
+             { name: "Tree/Bench Shaded Rest Area", type: "rest_area", lat: parseFloat(startLat) + (parseFloat(endLat) - parseFloat(startLat))*0.65, lng: parseFloat(startLng) + (parseFloat(endLng) - parseFloat(startLng))*0.65 },
+           ];
+         }
+      }
+    }
 
     const geminiApiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null;
     
     if (!geminiApiKey || geminiApiKey === 'your_gemini_api_key_here' || geminiApiKey === '') {
-      return res.json(getMockRoutePlan(source, destination, mode));
+      const mockFallback = getMockRoutePlan(source, destination, mode);
+      return res.json({ ...mockFallback, pois });
     }
 
     const prompt = `You are an advanced urban heat routing AI. A user is travelling from "${source}" to "${destination}" via "${mode}". Current avg temperature is ${currentTemp || 32}°C.
@@ -574,10 +649,14 @@ Do not return any markdown or extra text.`;
     const data = await response.json();
     const raw = data.candidates[0].content.parts[0].text;
     const clean = raw.replace(/```json|```/g, '').trim();
-    res.json(JSON.parse(clean));
+    
+    const finalData = JSON.parse(clean);
+    finalData.pois = pois;
+    res.json(finalData);
   } catch (error) {
-    console.error(error);
-    res.json(getMockRoutePlan(source, destination, mode));
+    console.error("Route Plan API Error:", error);
+    const fallback = getMockRoutePlan(source, destination, mode);
+    res.json({ ...fallback, pois });
   }
 });
 

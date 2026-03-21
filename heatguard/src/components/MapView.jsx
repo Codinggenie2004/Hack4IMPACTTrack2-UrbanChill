@@ -107,7 +107,7 @@ function getInterpolatedData(lat, lng, zones) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab, userLocation, routeGeoJSON }) {
+export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab, userLocation, routeGeoJSON, routePOIs }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const zoneLayersRef = useRef([]);
@@ -119,6 +119,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
   const zonesRef = useRef(zones);
   const userMarkerRef = useRef(null);
   const routeLayerRef = useRef(null);
+  const routePOILayersRef = useRef([]);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
 
@@ -235,6 +236,39 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     }
   }, [routeGeoJSON]);
 
+  // Update Route POIs
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    routePOILayersRef.current.forEach(l => map.removeLayer(l));
+    routePOILayersRef.current = [];
+
+    if (routePOIs && routePOIs.length > 0) {
+      routePOIs.forEach(poi => {
+        let emoji = '📍';
+        if (poi.type === 'drinking_water' || poi.name.includes('Water')) emoji = '💧';
+        else if (poi.type === 'rest_area' || poi.type === 'hotel' || poi.type === 'guest_house' || poi.name.includes('Rest') || poi.name.includes('Hotel')) emoji = '🏨';
+        else if (poi.type === 'cafe' || poi.type === 'restaurant') emoji = '🍽️';
+        else if (poi.type === 'clinic' || poi.type === 'hospital' || poi.type === 'chemist') emoji = '🏥';
+        else if (poi.type === 'convenience' || poi.type === 'supermarket' || poi.type === 'beverages' || poi.name.includes('Shop')) emoji = '🛒';
+
+        const iconHtml = `<div style="font-size:26px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5)); animation:pinDrop 0.3s forwards;">${emoji}</div>`;
+        const customIcon = L.divIcon({ html: iconHtml, className: 'poi-icon', iconSize: [28,28], iconAnchor: [14,28] });
+        
+        const marker = L.marker([poi.lat, poi.lng], { icon: customIcon }).addTo(map);
+        marker.bindTooltip(`<strong>${emoji} ${poi.name}</strong>`, { 
+          permanent: true, 
+          direction: 'bottom', 
+          offset: [0, 8], 
+          className: 'zone-tooltip',
+          opacity: 0.95
+        });
+        routePOILayersRef.current.push(marker);
+      });
+    }
+  }, [routePOIs]);
+
   // ── Pan/zoom when city changes ─────────────────────────────────────────────
   useEffect(() => {
     if (!mapInstanceRef.current) return;
@@ -304,7 +338,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
         zoneLayersRef.current.push(marker);
 
-      } else if (activeTab === 'zone') {
+      } else if (activeTab === 'overview') {
         // ── Our colored rectangle for regular grid zones ──────────────────────
         const bounds = [
           [zone.lat - HALF_SPAN, zone.lng - HALF_SPAN],

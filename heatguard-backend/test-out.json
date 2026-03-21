@@ -1,0 +1,18 @@
+{
+  "route_analysis": "Temperature analysis complete. The standard route is hot, so we have simulated a path prioritizing tree-lined streets and shaded avenues to minimize heat exposure.",
+  "water_to_carry": "Carry at least 1.5 Liters of water from home.",
+  "hydration_stops": [
+    "Stop near local markets for Nariyal Pani (Coconut Water).",
+    "Look for public water coolers near transit stops."
+  ],
+  "rest_stops": [
+    "Take a 5-minute break under the large trees near the halfway mark.",
+    "Rest at any shaded bus shelter if you feel fatigued."
+  ],
+  "precautions": [
+    "Avoid direct sun exposure during this driving journey.",
+    "Wear a cap or use an umbrella."
+  ],
+  "estimated_cost": "₹0",
+  "summary": "Follow this shaded route plan and hydrate properly for a safe journey."
+}
