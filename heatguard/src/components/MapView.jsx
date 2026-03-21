@@ -107,7 +107,7 @@ function getInterpolatedData(lat, lng, zones) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab }) {
+export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab, userLocation, routeGeoJSON }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const zoneLayersRef = useRef([]);
@@ -117,6 +117,8 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
   // Keep refs in sync so map event handlers always read fresh values
   const onMapClickRef = useRef(onMapClick);
   const zonesRef = useRef(zones);
+  const userMarkerRef = useRef(null);
+  const routeLayerRef = useRef(null);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
 
@@ -212,10 +214,46 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     return () => { map.remove(); mapInstanceRef.current = null; };
   }, []);
 
+  // Update user location marker
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !userLocation) return;
+
+    if (!userMarkerRef.current) {
+      const userIcon = L.divIcon({
+        html: `<div style="width: 16px; height: 16px; background-color: #388bfd; border: 3px solid #0d1117; border-radius: 50%; box-shadow: 0 0 8px rgba(56,139,253,0.8);"></div>`,
+        className: 'user-location-icon',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+    } else {
+      userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
+    }
+  }, [userLocation]);
+
+  // Update route path
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (routeLayerRef.current) {
+      map.removeLayer(routeLayerRef.current);
+      routeLayerRef.current = null;
+    }
+
+    if (routeGeoJSON) {
+      routeLayerRef.current = L.geoJSON(routeGeoJSON, {
+        style: { color: '#3fb950', weight: 6, opacity: 0.9 }
+      }).addTo(map);
+      map.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.5 });
+    }
+  }, [routeGeoJSON]);
+
   // ── Pan/zoom when city changes ─────────────────────────────────────────────
   useEffect(() => {
     if (!mapInstanceRef.current) return;
-    mapInstanceRef.current.setView([center.lat, center.lng], zoom, { animate: true });
+    mapInstanceRef.current.flyTo([center.lat, center.lng], zoom, { duration: 1.5 });
   }, [center, zoom]);
 
   // ── Render zones ───────────────────────────────────────────────────────────

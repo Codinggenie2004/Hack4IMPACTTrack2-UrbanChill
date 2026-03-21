@@ -3,6 +3,7 @@ import ZoneDetail from './ZoneDetail';
 import AIPanel from './AIPanel';
 import CityOverview from './CityOverview';
 import HistoryPanel from './HistoryPanel';
+import RoutePlanner from './RoutePlanner';
 import { LanguageContext } from '../context/LanguageContext';
 
 export default function Sidebar({
@@ -15,7 +16,11 @@ export default function Sidebar({
   cityName,
   onZoneSelect,
   afterMode,
-  onCloseZone,
+  onPlanRoute,
+  routeLoading,
+  routeAdvisory,
+  userLocation,
+  onCloseZone
 }) {
   const { t } = useContext(LanguageContext);
 
@@ -42,6 +47,13 @@ export default function Sidebar({
           id="tab-history"
         >
           {t('history')}
+        </button>
+        <button
+          className={`sidebar-tab ${activeTab === 'route' ? 'active' : ''}`}
+          onClick={() => onTabChange('route')}
+          id="tab-route"
+        >
+          Route
         </button>
       </div>
 
@@ -85,6 +97,13 @@ export default function Sidebar({
           )
         ) : activeTab === 'history' ? (
           <HistoryPanel />
+        ) : activeTab === 'route' ? (
+          <RoutePlanner 
+            onPlanRoute={onPlanRoute} 
+            loading={routeLoading} 
+            advisory={routeAdvisory} 
+            userLocation={userLocation}
+          />
         ) : (
           zones.length > 0 ? (
             <CityOverview
