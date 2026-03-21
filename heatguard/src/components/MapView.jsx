@@ -12,7 +12,7 @@ const TILE_OPTS = {
 
 const HEAT_GRADIENT = { 0.2: '#1a472a', 0.4: '#d29922', 0.65: '#f85149', 1.0: '#ff006e' };
 
-export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, userLocation }) {
+export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, userLocation, routeGeoJSON }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const heatLayerRef = useRef(null);
@@ -21,6 +21,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
   const onMapClickRef = useRef(onMapClick);
   const zonesRef = useRef(zones);
   const userMarkerRef = useRef(null);
+  const routeLayerRef = useRef(null);
 
   const [hoverData, setHoverData] = useState(null);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
@@ -105,6 +106,24 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
       userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
     }
   }, [userLocation]);
+
+  // Update route path
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (routeLayerRef.current) {
+      map.removeLayer(routeLayerRef.current);
+      routeLayerRef.current = null;
+    }
+
+    if (routeGeoJSON) {
+      routeLayerRef.current = L.geoJSON(routeGeoJSON, {
+        style: { color: '#3fb950', weight: 6, opacity: 0.9 }
+      }).addTo(map);
+      map.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.5 });
+    }
+  }, [routeGeoJSON]);
 
   // Update view when center/zoom changes
   useEffect(() => {

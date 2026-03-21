@@ -24,6 +24,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [locationPromptOpen, setLocationPromptOpen] = useState(false);
+  const [routeGeoJSON, setRouteGeoJSON] = useState(null);
+  const [routeAdvisory, setRouteAdvisory] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   const { lang } = React.useContext(LanguageContext) || { lang: 'en' };
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -185,7 +188,7 @@ export default function App() {
     if (userLocation) {
       // Create a new object reference so the MapView useEffect always triggers
       setCenter({ lat: userLocation.lat, lng: userLocation.lng });
-      setZoom(prev => prev === 14 ? 14.0001 : 14); // Toggle slightly to force zoom re-render if needed
+      setZoom(prev => prev === 16 ? 16.0001 : 16); // Closer zoom for map precision
     } else {
       setLoading(true);
       navigator.geolocation.getCurrentPosition(
@@ -193,7 +196,7 @@ export default function App() {
           const { latitude, longitude } = position.coords;
           setUserLocation({ lat: latitude, lng: longitude });
           setCenter({ lat: latitude, lng: longitude });
-          setZoom(14);
+          setZoom(16);
           setLoading(false);
           setLocationPromptOpen(false);
         },
@@ -204,8 +207,64 @@ export default function App() {
         },
         { enableHighAccuracy: true, timeout: 30000 }
       );
+      setLocationPromptOpen(true);
     }
   }, [userLocation]);
+
+  const handlePlanRoute = async (src, dst, mode) => {
+    setRouteLoading(true);
+    setRouteGeoJSON(null);
+    setRouteAdvisory(null);
+    try {
+      let startCoords = null;
+      let startName = src;
+      if (src.toLowerCase() === 'my location' && userLocation) {
+        startCoords = { lat: userLocation.lat, lon: userLocation.lng };
+      } else {
+        const srcRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(src)}&format=json&limit=1`, { headers: { 'User-Agent': 'HeatGuard-Local-App' } });
+        const srcData = await srcRes.json();
+        if (srcData.length > 0) startCoords = { lat: parseFloat(srcData[0].lat), lon: parseFloat(srcData[0].lon) };
+      }
+
+      let endCoords = null;
+      let endName = dst;
+      if (dst.toLowerCase() === 'my location' && userLocation) {
+        endCoords = { lat: userLocation.lat, lon: userLocation.lng };
+      } else {
+        const dstRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(dst)}&format=json&limit=1`, { headers: { 'User-Agent': 'HeatGuard-Local-App' } });
+        const dstData = await dstRes.json();
+        if (dstData.length > 0) endCoords = { lat: parseFloat(dstData[0].lat), lon: parseFloat(dstData[0].lon) };
+      }
+
+      if (startCoords && endCoords) {
+        const p1 = [startCoords.lon, startCoords.lat];
+        const p2 = [endCoords.lon, endCoords.lat];
+        
+        const routeMode = mode === 'walk' || mode === 'cycle' ? 'walking' : 'driving';
+        const routeRes = await fetch(`https://router.project-osrm.org/route/v1/${routeMode}/${p1[0]},${p1[1]};${p2[0]},${p2[1]}?overview=full&geometries=geojson`);
+        const routeData = await routeRes.json();
+        
+        if (routeData.code === 'Ok' && routeData.routes.length > 0) {
+          setRouteGeoJSON(routeData.routes[0].geometry);
+        }
+      }
+
+      const advRes = await fetch('http://localhost:5000/api/route-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: startName, destination: endName, mode, currentTemp: stats?.avgTemp || 32 })
+      });
+      if (advRes.ok) {
+        const advText = await advRes.json();
+        setRouteAdvisory(advText);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to plan route.");
+    } finally {
+      setRouteLoading(false);
+    }
+  };
 
   return (
     <div className="app-layout">
@@ -220,6 +279,7 @@ export default function App() {
           selectedZone={selectedZone}
           onMapClick={handleMapClick}
           userLocation={userLocation}
+          routeGeoJSON={routeGeoJSON}
         />
         <Sidebar
           activeTab={activeTab}
@@ -231,6 +291,10 @@ export default function App() {
           cityName={cityName}
           onZoneSelect={handleZoneSelectFromOverview}
           afterMode={afterMode}
+          onPlanRoute={handlePlanRoute}
+          routeLoading={routeLoading}
+          routeAdvisory={routeAdvisory}
+          userLocation={userLocation}
         />
       </div>
       <BottomBar afterMode={afterMode} onToggle={setAfterMode} lastUpdated={lastUpdated} onLocateMe={handleLocateMe} />

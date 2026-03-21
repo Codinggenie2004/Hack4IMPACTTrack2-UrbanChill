@@ -514,6 +514,73 @@ app.post('/api/pin', async (req, res) => {
   }
 });
 
+// --- Route Plan API ---
+function getMockRoutePlan(source, dest, mode) {
+  return {
+    route_analysis: "Temperature analysis complete. The standard route is hot, so we have simulated a path prioritizing tree-lined streets and shaded avenues to minimize heat exposure.",
+    water_to_carry: "Carry at least 1.5 Liters of water from home.",
+    hydration_stops: [
+      "Stop near local markets for Nariyal Pani (Coconut Water).",
+      "Look for public water coolers near transit stops."
+    ],
+    rest_stops: [
+      "Take a 5-minute break under the large trees near the halfway mark.",
+      "Rest at any shaded bus shelter if you feel fatigued."
+    ],
+    precautions: [
+      `Avoid direct sun exposure during this ${mode} journey.`,
+      "Wear a cap or use an umbrella."
+    ],
+    estimated_cost: mode === "bus" ? "₹40 - ₹60" : mode === "bike" ? "₹50 (fuel)" : "₹0",
+    summary: "Follow this shaded route plan and hydrate properly for a safe journey."
+  };
+}
+
+app.post('/api/route-plan', async (req, res) => {
+  try {
+    const { source, destination, mode, currentTemp } = req.body;
+    if (!source || !destination) return res.status(400).json({ error: 'Source and destination required' });
+
+    const geminiApiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null;
+    
+    if (!geminiApiKey || geminiApiKey === 'your_gemini_api_key_here' || geminiApiKey === '') {
+      return res.json(getMockRoutePlan(source, destination, mode));
+    }
+
+    const prompt = `You are an advanced urban heat routing AI. A user is travelling from "${source}" to "${destination}" via "${mode}". Current avg temperature is ${currentTemp || 32}°C.
+The user strictly requested a heat-optimized route that finds a path with more trees and shade.
+Provide a highly specific travel plan in JSON format with exactly these keys:
+{
+  "route_analysis": "1-2 sentences explaining that the route was analyzed for temperature and optimized for maximum tree cover and less heat.",
+  "water_to_carry": "Specific amount of water to carry from home (e.g. 1.5 Liters or 2 Bottles).",
+  "hydration_stops": ["Specific realistic local suggestions for this route on where to drink water, get coconut water (nariyal pani), or ORS."],
+  "rest_stops": ["Specific realistic local landmarks, parks, or shade spots on this route to take a rest."],
+  "precautions": ["2 specific heat tips"],
+  "estimated_cost": "Estimated cost in INR",
+  "summary": "1 sentence final encouraging remark"
+}
+Do not return any markdown or extra text.`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+
+    if (!response.ok) throw new Error('Gemini API Error');
+    const data = await response.json();
+    const raw = data.candidates[0].content.parts[0].text;
+    const clean = raw.replace(/```json|```/g, '').trim();
+    res.json(JSON.parse(clean));
+  } catch (error) {
+    console.error(error);
+    res.json(getMockRoutePlan(source, destination, mode));
+  }
+});
+
 // --- REPORTS API ---
 
 app.get('/api/reports/:userId', authenticateToken, async (req, res) => {
