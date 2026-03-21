@@ -203,7 +203,9 @@ app.post('/api/analyse-zone', async (req, res) => {
       return res.status(400).json({ error: 'Zone and risk data required' });
     }
 
-    const languageInstruction = language && language !== 'en' ? ` Please provide all outputs and recommendations translated into ${language.toUpperCase()}.` : '';
+    const langMap = { hi: 'Hindi', ta: 'Tamil', te: 'Telugu', en: 'English' };
+    const langName = language ? (langMap[language] || 'English') : 'English';
+    const languageInstruction = language && language !== 'en' ? ` IMPORTANT SYSTEM INSTRUCTION: You MUST directly translate every single JSON string value (especially 'action', 'impact', 'summary', and 'projected_temp_reduction') into fluent and natural ${langName}. Do NOT provide the values lightly translated or in English. Ensure the JSON keys remain exactly as requested in English, but the output text MUST be fully localized in the requested language (${langName}).` : '';
 
     const prompt = `You are an urban climate expert. Analyse this urban zone and give 3 specific green infrastructure interventions.${languageInstruction}\n\nZone data:\n- Name: ${zone.name}\n- Land use: ${zone.landUse}\n- Surface temperature: ${zone.temp}°C\n- Green cover: ${zone.greenCover}%\n- Air Quality Index: ${zone.aqi}\n- Population density: ${zone.density} people/km²\n- Humidity: ${zone.humidity}%\n- Heat risk level: ${risk.label}\n\nRespond ONLY with a valid JSON object. No markdown, no explanation outside JSON:\n{\n  "interventions": [\n    {\n      "type": "TREES" | "COOL PAVEMENT" | "ROOFTOP GARDEN" | "GREEN WALL" | "WATER FEATURE" | "PARK",\n      "action": "specific actionable recommendation in one sentence",\n      "impact": "projected temperature reduction and benefit"\n    }\n  ],\n  "summary": "2-sentence overall assessment and most urgent priority",\n  "projected_temp_reduction": "e.g. −3.2°C with all interventions",\n  "priority": "HIGH" | "MEDIUM" | "LOW"\n}`;
 

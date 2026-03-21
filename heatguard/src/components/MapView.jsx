@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useContext } from 'react';
 import L from 'leaflet';
 import 'leaflet.heat';
 import { getRisk } from '../utils/riskHelpers';
+import { LanguageContext } from '../context/LanguageContext';
 
 // Google Maps-style road tile (standard Maps look, with English labels)
 const TILE_URL = 'https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}';
@@ -29,13 +30,13 @@ function getWeatherEmoji(description = '', temp = 30) {
   return temp > 35 ? '🌡️' : '🌤️';
 }
 
-function buildPopupHTML(data, isLoading) {
+function buildPopupHTML(data, isLoading, t) {
   if (isLoading) {
     return `
       <div class="temp-popup-inner">
         <div class="temp-popup-loading">
           <div class="temp-popup-spinner"></div>
-          <span>Fetching temperature…</span>
+          <span>${t('fetching_temperature')}</span>
         </div>
       </div>`;
   }
@@ -55,35 +56,35 @@ function buildPopupHTML(data, isLoading) {
       : coordStr;
 
   return `
-    <div class="temp-popup-inner">
-      <div class="temp-popup-header">
-        <div class="temp-popup-location">${locationStr}</div>
-        <div class="temp-popup-coords">${coordStr}</div>
-        ${data.realtime
-          ? '<div class="temp-popup-live">● Live</div>'
-          : '<div class="temp-popup-estimated">★ Estimated (no OWM key)</div>'}
-      </div>
-      <div class="temp-popup-main">
-        <span class="temp-popup-emoji">${emoji}</span>
-        <span class="temp-popup-temp" style="color:${riskObj.color}">${data.temp}°C</span>
-        <span class="temp-popup-risk" style="color:${riskObj.color}">${riskObj.label}</span>
-      </div>
-      <div class="temp-popup-desc">${data.description}</div>
-      <div class="temp-popup-stats">
-        <div class="temp-stat">
-          <span class="temp-stat-label">Feels Like</span>
-          <span class="temp-stat-value">${data.feelsLike}°C</span>
+      <div class="temp-popup-inner">
+        <div class="temp-popup-header">
+          <div class="temp-popup-location">${locationStr}</div>
+          <div class="temp-popup-coords">${coordStr}</div>
+          ${data.realtime
+            ? `<div class="temp-popup-live">● ${t('live')}</div>`
+            : `<div class="temp-popup-estimated">★ ${t('projected')}</div>`}
         </div>
-        <div class="temp-stat">
-          <span class="temp-stat-label">Humidity</span>
-          <span class="temp-stat-value">${data.humidity}%</span>
+        <div class="temp-popup-main">
+          <span class="temp-popup-emoji">${emoji}</span>
+          <span class="temp-popup-temp" style="color:${riskObj.color}">${data.temp}°C</span>
+          <span class="temp-popup-risk" style="color:${riskObj.color}">${t(riskObj.label.toLowerCase().replace(' ', '_')) || riskObj.label}</span>
         </div>
-        <div class="temp-stat">
-          <span class="temp-stat-label">Wind</span>
-          <span class="temp-stat-value">${data.windSpeed} km/h</span>
+        <div class="temp-popup-desc">${data.description}</div>
+        <div class="temp-popup-stats">
+          <div class="temp-stat">
+            <span class="temp-stat-label">${t('feels_like')}</span>
+            <span class="temp-stat-value">${data.feelsLike}°C</span>
+          </div>
+          <div class="temp-stat">
+            <span class="temp-stat-label">${t('humidity')}</span>
+            <span class="temp-stat-value">${data.humidity}%</span>
+          </div>
+          <div class="temp-stat">
+            <span class="temp-stat-label">${t('wind')}</span>
+            <span class="temp-stat-value">${data.windSpeed} km/h</span>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
 }
 
 // Interpolate temp/aqi/greenCover at cursor position using inverse-distance weighting
@@ -108,6 +109,7 @@ function getInterpolatedData(lat, lng, zones) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab, userLocation, routeGeoJSON }) {
+  const { t } = useContext(LanguageContext);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const zoneLayersRef = useRef([]);
@@ -153,7 +155,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
       offset: [0, showPinMarker ? -10 : 0],
     })
       .setLatLng([lat, lng])
-      .setContent(buildPopupHTML(null, true))
+      .setContent(buildPopupHTML(null, true, t))
       .addTo(map);
       
     clickPopupRef.current = popup;
@@ -167,14 +169,14 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
       const resp = await fetch(`http://localhost:5000/api/temperature?lat=${lat}&lng=${lng}`);
       const data = await resp.json();
       if (clickPopupRef.current === popup) {
-        clickPopupRef.current.setContent(buildPopupHTML(data, false));
+        clickPopupRef.current.setContent(buildPopupHTML(data, false, t));
       }
     } catch {
       if (clickPopupRef.current === popup) {
-        clickPopupRef.current.setContent(buildPopupHTML({ error: 'Could not fetch temperature' }, false));
+        clickPopupRef.current.setContent(buildPopupHTML({ error: 'Could not fetch temperature' }, false, t));
       }
     }
-  }, []);
+  }, [t]);
 
   // ── Map initialisation ────────────────────────────────────────────────────
   useEffect(() => {
