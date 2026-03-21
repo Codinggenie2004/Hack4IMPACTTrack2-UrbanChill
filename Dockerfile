@@ -11,7 +11,7 @@ FROM node:20 AS backend-builder
 WORKDIR /app/heatguard-backend
 # Copy package files and install ALL dependencies (including devDependencies if needed for build)
 COPY heatguard-backend/package*.json ./
-RUN npm install
+RUN npm install && npm rebuild sqlite3 --build-from-source
 
 # Copy source and other files
 COPY heatguard-backend/ ./
