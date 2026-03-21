@@ -159,6 +159,14 @@ export default function App() {
     handleZoneClick(zone);
   }, [handleZoneClick]);
 
+  const handleCloseZone = useCallback(() => {
+    setSelectedZone(null);
+    setRecommendations(null);
+    setActiveTab('overview');
+    // Remove the custom pin zone from the map when closing analysis
+    setZones(prev => prev.filter(z => !z.isCustomPin));
+  }, []);
+
   const handleMapClick = useCallback(async (lat, lng) => {
     try {
       setLoading(true);
@@ -280,6 +288,7 @@ export default function App() {
           onMapClick={handleMapClick}
           userLocation={userLocation}
           routeGeoJSON={routeGeoJSON}
+          activeTab={activeTab}
         />
         <Sidebar
           activeTab={activeTab}
@@ -295,6 +304,7 @@ export default function App() {
           routeLoading={routeLoading}
           routeAdvisory={routeAdvisory}
           userLocation={userLocation}
+          onCloseZone={handleCloseZone}
         />
       </div>
       <BottomBar afterMode={afterMode} onToggle={setAfterMode} lastUpdated={lastUpdated} onLocateMe={handleLocateMe} />

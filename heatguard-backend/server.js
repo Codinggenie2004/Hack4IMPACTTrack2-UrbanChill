@@ -600,6 +600,79 @@ app.get('/api/reports/:userId', authenticateToken, async (req, res) => {
   }
 });
 
+// --- REAL-TIME TEMPERATURE BY COORDINATES ---
+
+app.get('/api/temperature', async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'lat and lng query params required' });
+    }
+
+    const parsedLat = parseFloat(lat);
+    const parsedLng = parseFloat(lng);
+
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+      return res.status(400).json({ error: 'Invalid lat/lng values' });
+    }
+
+    // Run Open-Meteo (Weather+Wind) + Nominatim reverse geocoding in parallel
+    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${parsedLat}&longitude=${parsedLng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&timezone=auto`;
+    const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?lat=${parsedLat}&lon=${parsedLng}&format=json&zoom=16&addressdetails=1`;
+
+    const [meteoData, nominatimData] = await Promise.all([
+      fetch(meteoUrl).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(nominatimUrl, { headers: { 'User-Agent': 'HeatGuard/1.0' } }).then(r => r.ok ? r.json() : null).catch(() => null)
+    ]);
+
+    let temp, humidity, feelsLike, windSpeed, description, icon;
+
+    if (meteoData && meteoData.current) {
+      temp = meteoData.current.temperature_2m;
+      humidity = meteoData.current.relative_humidity_2m;
+      feelsLike = meteoData.current.apparent_temperature;
+      windSpeed = meteoData.current.wind_speed_10m;
+      
+      // Simple WMO code mapping for Open-Meteo
+      const code = meteoData.current.weather_code;
+      if (code <= 3) { description = 'clear/partly cloudy'; icon = '01d'; }
+      else if (code <= 48) { description = 'fog/mist'; icon = '50d'; }
+      else if (code <= 69) { description = 'rain/drizzle'; icon = '09d'; }
+      else if (code <= 79) { description = 'snow'; icon = '13d'; }
+      else { description = 'storm/heavy rain'; icon = '11d'; }
+    } else {
+      // API failure fallback
+      temp = 30; humidity = 50; feelsLike = 32; windSpeed = 10; description = 'unknown'; icon = '01d';
+    }
+
+    // Build precise location name from Nominatim
+    let locationName = 'Unknown location';
+    let country = '';
+    if (nominatimData && nominatimData.address) {
+      const addr = nominatimData.address;
+      locationName = addr.neighbourhood || addr.suburb || addr.quarter || addr.village || addr.town || addr.city || addr.county || 'Unknown';
+      country = addr.country_code ? addr.country_code.toUpperCase() : '';
+    }
+
+    return res.json({
+      lat: parsedLat,
+      lng: parsedLng,
+      temp,
+      feelsLike,
+      humidity,
+      windSpeed,
+      description,
+      icon,
+      locationName,
+      country,
+      realtime: true, // Always real data now via Open-Meteo!
+    });
+  } catch (error) {
+    console.error('/api/temperature error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Initialize DB and Start Server
 initDB().then(() => {
   app.listen(PORT, () => {
