@@ -1,76 +1,100 @@
-const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
-const path = require('path');
-const fs = require('fs');
+const { Pool } = require('pg');
+const dotenv = require('dotenv');
 
-const DB_DIR = '/app/heatguard-backend/data';
-const DB_PATH = path.join(DB_DIR, 'heatguard.db');
+dotenv.config();
 
-let db;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // Required for Supabase/Heroku unless you configure CAcerts
+  }
+});
+
+let db = {
+  // Wrapper to mimic sqlite-like methods for easier server.js migration
+  run: async (query, params = []) => {
+    // Convert ? to $1, $2, etc.
+    let index = 1;
+    const pgQuery = query.replace(/\?/g, () => `$${index++}`);
+    const result = await pool.query(pgQuery, params);
+    return { lastID: result.rows[0]?.id || null, changes: result.rowCount };
+  },
+  get: async (query, params = []) => {
+    let index = 1;
+    const pgQuery = query.replace(/\?/g, () => `$${index++}`);
+    const result = await pool.query(pgQuery, params);
+    return result.rows[0];
+  },
+  all: async (query, params = []) => {
+    let index = 1;
+    const pgQuery = query.replace(/\?/g, () => `$${index++}`);
+    const result = await pool.query(pgQuery, params);
+    return result.rows;
+  },
+  exec: async (query) => {
+    return await pool.query(query);
+  }
+};
 
 async function initDB() {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+  try {
+    // Test connection
+    await pool.query('SELECT NOW()');
+    console.log('PostgreSQL Connected');
 
-  db = await open({
-    filename: DB_PATH,
-    driver: sqlite3.Database
-  });
+    // Create Tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      CREATE TABLE IF NOT EXISTS cities (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        name TEXT NOT NULL,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        last_analysed TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
 
-    CREATE TABLE IF NOT EXISTS cities (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      name TEXT NOT NULL,
-      lat REAL,
-      lng REAL,
-      last_analysed DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
+      CREATE TABLE IF NOT EXISTS zones (
+        id TEXT PRIMARY KEY,
+        city_id INTEGER REFERENCES cities(id),
+        name TEXT,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        temp DOUBLE PRECISION,
+        aqi INTEGER,
+        green_cover DOUBLE PRECISION,
+        density INTEGER,
+        humidity DOUBLE PRECISION,
+        land_use TEXT
+      );
 
-    CREATE TABLE IF NOT EXISTS zones (
-      id TEXT PRIMARY KEY,
-      city_id INTEGER,
-      name TEXT,
-      lat REAL,
-      lng REAL,
-      temp REAL,
-      aqi INTEGER,
-      green_cover REAL,
-      density INTEGER,
-      humidity REAL,
-      land_use TEXT,
-      FOREIGN KEY(city_id) REFERENCES cities(id)
-    );
+      CREATE TABLE IF NOT EXISTS reports (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        zone_id TEXT REFERENCES zones(id),
+        interventions_json TEXT,
+        summary TEXT,
+        projected_reduction TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
-    CREATE TABLE IF NOT EXISTS reports (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      zone_id TEXT,
-      interventions_json TEXT,
-      summary TEXT,
-      projected_reduction TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id),
-      FOREIGN KEY(zone_id) REFERENCES zones(id)
-    );
-  `);
-
-  console.log('Database initialized');
-  return db;
+    console.log('PostgreSQL Schema Initialized');
+    return db;
+  } catch (err) {
+    console.error('Database Initialization Error:', err);
+    throw err;
+  }
 }
 
 function getDB() {
-  if (!db) {
-    throw new Error("Database not initialized. Call initDB first.");
-  }
   return db;
 }
 
-module.exports = { initDB, getDB };
+module.exports = { initDB, getDB, pool };

@@ -47,7 +47,7 @@ app.post('/api/auth/signup', async (req, res) => {
     if (existing) return res.status(400).json({ error: 'Email already exists' });
 
     const hash = await bcrypt.hash(password, 10);
-    const result = await db.run(`INSERT INTO users (email, password_hash) VALUES (?, ?)`, [email, hash]);
+    const result = await db.run(`INSERT INTO users (email, password_hash) VALUES (?, ?) RETURNING id`, [email, hash]);
 
     const token = jwt.sign({ id: result.lastID, email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: result.lastID, email } });
@@ -225,7 +225,7 @@ app.post('/api/analyse-zone', async (req, res) => {
       if (userId) {
         const db = getDB();
         await db.run(
-          `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [userId, zone.id, JSON.stringify(mockResult.interventions), mockResult.summary, mockResult.projected_temp_reduction]
         );
       }
@@ -265,7 +265,7 @@ app.post('/api/analyse-zone', async (req, res) => {
     if (userId) {
       const db = getDB();
       await db.run(
-        `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [userId, zone.id, JSON.stringify(result.interventions), result.summary, result.projected_temp_reduction]
       );
     }
