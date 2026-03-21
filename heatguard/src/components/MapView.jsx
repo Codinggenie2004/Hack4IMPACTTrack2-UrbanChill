@@ -107,7 +107,7 @@ function getInterpolatedData(lat, lng, zones) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick }) {
+export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const zoneLayersRef = useRef([]);
@@ -266,7 +266,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
         zoneLayersRef.current.push(marker);
 
-      } else {
+      } else if (activeTab === 'zone') {
         // ── Our colored rectangle for regular grid zones ──────────────────────
         const bounds = [
           [zone.lat - HALF_SPAN, zone.lng - HALF_SPAN],
@@ -302,7 +302,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
         zoneLayersRef.current.push(rect);
       }
     });
-  }, [zones, afterMode, selectedZone]);
+  }, [zones, afterMode, selectedZone, activeTab]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

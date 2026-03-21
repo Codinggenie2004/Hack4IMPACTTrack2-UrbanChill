@@ -15,6 +15,7 @@ export default function Sidebar({
   cityName,
   onZoneSelect,
   afterMode,
+  onCloseZone,
 }) {
   const { t } = useContext(LanguageContext);
 
@@ -47,7 +48,32 @@ export default function Sidebar({
       <div className="sidebar-content">
         {activeTab === 'zone' ? (
           selectedZone ? (
-            <div className="fade-in">
+            <div className="fade-in" style={{ position: 'relative' }}>
+              {onCloseZone && (
+                <button
+                  onClick={onCloseZone}
+                  title="Close zone analysis"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    zIndex: 10,
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '6px',
+                    color: '#7d8590',
+                    cursor: 'pointer',
+                    fontSize: 16,
+                    lineHeight: 1,
+                    padding: '4px 8px',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseOver={e => { e.currentTarget.style.color = '#e6edf3'; e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}
+                  onMouseOut={e => { e.currentTarget.style.color = '#7d8590'; e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+                >
+                  ✕
+                </button>
+              )}
               <ZoneDetail zone={selectedZone} afterMode={afterMode} />
               <AIPanel recommendations={recommendations} loading={recLoading} zone={selectedZone} cityName={cityName} />
             </div>

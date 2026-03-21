@@ -114,6 +114,7 @@ export default function App() {
   const handleCloseZone = useCallback(() => {
     setSelectedZone(null);
     setRecommendations(null);
+    setActiveTab('overview');
     // Remove the custom pin zone from the map when closing analysis
     setZones(prev => prev.filter(z => !z.isCustomPin));
   }, []);
@@ -155,6 +156,7 @@ export default function App() {
           onZoneClick={handleZoneClick}
           selectedZone={selectedZone}
           onMapClick={handleMapClick}
+          activeTab={activeTab}
         />
         <Sidebar
           activeTab={activeTab}
