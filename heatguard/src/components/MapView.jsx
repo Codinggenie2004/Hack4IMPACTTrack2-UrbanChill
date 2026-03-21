@@ -252,7 +252,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     if (routeGeoJSON) {
       routeLayerRef.current = L.geoJSON(routeGeoJSON, {
         pane: 'routePane',
-        style: { color: '#3fb950', weight: 8, opacity: 1, dashArray: '12, 10' }
+        style: { color: '#3fb950', weight: 6, opacity: 1 }
       }).addTo(map);
       map.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.5 });
     }
