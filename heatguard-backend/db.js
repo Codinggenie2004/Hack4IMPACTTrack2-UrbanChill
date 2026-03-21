@@ -1,12 +1,18 @@
 const sqlite3 = require('sqlite3').verbose();
 const { open } = require('sqlite');
 const path = require('path');
+const fs = require('fs');
+
+const DB_DIR = '/app/heatguard-backend/data';
+const DB_PATH = path.join(DB_DIR, 'heatguard.db');
 
 let db;
 
 async function initDB() {
+  fs.mkdirSync(DB_DIR, { recursive: true });
+
   db = await open({
-    filename: path.join(__dirname, 'heatguard.db'),
+    filename: DB_PATH,
     driver: sqlite3.Database
   });
 
