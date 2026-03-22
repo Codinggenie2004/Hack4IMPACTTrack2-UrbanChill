@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const fetch = global.fetch || ((...args) => import('node-fetch').then(({default: fetch}) => fetch(...args)));
 const { initDB, getDB } = require('./db');
+const path = require('path');
 
 dotenv.config();
 
@@ -29,6 +30,11 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// --- HEALTH CHECK ---
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date(), uptime: process.uptime() });
+});
+
 // --- AUTHENTICATION ENDPOINTS ---
 
 app.post('/api/auth/signup', async (req, res) => {
@@ -41,7 +47,7 @@ app.post('/api/auth/signup', async (req, res) => {
     if (existing) return res.status(400).json({ error: 'Email already exists' });
 
     const hash = await bcrypt.hash(password, 10);
-    const result = await db.run(`INSERT INTO users (email, password_hash) VALUES (?, ?)`, [email, hash]);
+    const result = await db.run(`INSERT INTO users (email, password_hash) VALUES (?, ?) RETURNING id`, [email, hash]);
 
     const token = jwt.sign({ id: result.lastID, email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: result.lastID, email } });
@@ -203,7 +209,9 @@ app.post('/api/analyse-zone', async (req, res) => {
       return res.status(400).json({ error: 'Zone and risk data required' });
     }
 
-    const languageInstruction = language && language !== 'en' ? ` Please provide all outputs and recommendations translated into ${language.toUpperCase()}.` : '';
+    const langMap = { hi: 'Hindi', ta: 'Tamil', te: 'Telugu', en: 'English' };
+    const langName = language ? (langMap[language] || 'English') : 'English';
+    const languageInstruction = language && language !== 'en' ? ` IMPORTANT SYSTEM INSTRUCTION: You MUST directly translate every single JSON string value (especially 'action', 'impact', 'summary', and 'projected_temp_reduction') into fluent and natural ${langName}. Do NOT provide the values lightly translated or in English. Ensure the JSON keys remain exactly as requested in English, but the output text MUST be fully localized in the requested language (${langName}).` : '';
 
     const prompt = `You are an urban climate expert. Analyse this urban zone and give 3 specific green infrastructure interventions.${languageInstruction}\n\nZone data:\n- Name: ${zone.name}\n- Land use: ${zone.landUse}\n- Surface temperature: ${zone.temp}°C\n- Green cover: ${zone.greenCover}%\n- Air Quality Index: ${zone.aqi}\n- Population density: ${zone.density} people/km²\n- Humidity: ${zone.humidity}%\n- Heat risk level: ${risk.label}\n\nRespond ONLY with a valid JSON object. No markdown, no explanation outside JSON:\n{\n  "interventions": [\n    {\n      "type": "TREES" | "COOL PAVEMENT" | "ROOFTOP GARDEN" | "GREEN WALL" | "WATER FEATURE" | "PARK",\n      "action": "specific actionable recommendation in one sentence",\n      "impact": "projected temperature reduction and benefit"\n    }\n  ],\n  "summary": "2-sentence overall assessment and most urgent priority",\n  "projected_temp_reduction": "e.g. −3.2°C with all interventions",\n  "priority": "HIGH" | "MEDIUM" | "LOW"\n}`;
 
@@ -217,7 +225,7 @@ app.post('/api/analyse-zone', async (req, res) => {
       if (userId) {
         const db = getDB();
         await db.run(
-          `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [userId, zone.id, JSON.stringify(mockResult.interventions), mockResult.summary, mockResult.projected_temp_reduction]
         );
       }
@@ -257,7 +265,7 @@ app.post('/api/analyse-zone', async (req, res) => {
     if (userId) {
       const db = getDB();
       await db.run(
-        `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO reports (user_id, zone_id, interventions_json, summary, projected_reduction) VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [userId, zone.id, JSON.stringify(result.interventions), result.summary, result.projected_temp_reduction]
       );
     }
@@ -341,15 +349,17 @@ const GENERIC_ZONE_PREFIXES = [
   'Mall', 'Bridge', 'Colony', 'Nagar', 'Bazaar'
 ];
 
-function generateZones(cityKey, centerLat, centerLng) {
+function generateZones(cityKey, centerLat, centerLng, latSpan = 0.06, lngSpan = 0.06, dynamicNames = null, displayName = "") {
   const zones = [];
   const GRID = 5;
-  const SPREAD = 0.06;
-  const startLat = centerLat - (GRID / 2) * SPREAD;
-  const startLng = centerLng - (GRID / 2) * SPREAD;
+  const startLat = centerLat - (GRID / 2) * latSpan;
+  const startLng = centerLng - (GRID / 2) * lngSpan;
 
   const seed = cityKey.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const cityNamesList = CITY_ZONE_NAMES[cityKey] || GENERIC_ZONE_PREFIXES;
+  
+  // Use dynamically fetched local suburbs/villages if available, else padded generic names
+  let cityNamesList = dynamicNames || CITY_ZONE_NAMES[cityKey] || GENERIC_ZONE_PREFIXES.map(p => `${displayName} ${p}`);
+
 
   for (let row = 0; row < GRID; row++) {
     for (let col = 0; col < GRID; col++) {
@@ -359,8 +369,8 @@ function generateZones(cityKey, centerLat, centerLng) {
         return x - Math.floor(x);
       };
 
-      const lat = startLat + row * SPREAD + (pseudoRand(1) - 0.5) * 0.01;
-      const lng = startLng + col * SPREAD + (pseudoRand(2) - 0.5) * 0.01;
+      const lat = startLat + row * latSpan + (pseudoRand(1) - 0.5) * latSpan * 0.1;
+      const lng = startLng + col * lngSpan + (pseudoRand(2) - 0.5) * lngSpan * 0.1;
       
       const greenCover = +(5 + pseudoRand(4) * 55).toFixed(1);
       const density = Math.round(3000 + pseudoRand(5) * 45000);
@@ -373,6 +383,8 @@ function generateZones(cityKey, centerLat, centerLng) {
         name: zoneName,
         lat,
         lng,
+        latSpan,
+        lngSpan,
         greenCover,
         density,
         landUse,
@@ -416,39 +428,138 @@ app.get('/api/city/:name', async (req, res) => {
       zoom: 12
     };
 
+    let latSpan = 0.06;
+    let lngSpan = 0.06;
+    let localNames = null;
+
+    if (geocodeData[0].boundingbox) {
+      const bbox = geocodeData[0].boundingbox.map(parseFloat);
+      // bbox: [latMin, latMax, lonMin, lonMax]
+      const totalLat = Math.abs(bbox[1] - bbox[0]);
+      const totalLng = Math.abs(bbox[3] - bbox[2]);
+      
+      // Limit to reasonable spans (between 0.005 and 0.12 degrees per cell)
+      latSpan = Math.max(0.005, Math.min(0.12, totalLat / 5));
+      lngSpan = Math.max(0.005, Math.min(0.12, totalLng / 5));
+
+      // Attempt to fetch authentic local neighborhoods via Overpass API
+      if (!CITY_ZONE_NAMES[displayName.toLowerCase()]) {
+        try {
+          const query = `[out:json][timeout:3];(node["place"~"suburb|town|village|hamlet|neighbourhood"](${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]}););out 30;`;
+          const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+          
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000); // 3 sec timeout
+          
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeout);
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.elements) {
+              let names = data.elements.map(e => e.tags?.name || e.tags?.['name:en']).filter(Boolean);
+              names = [...new Set(names)]; // Remove exact duplicates
+              if (names.length >= 5) {
+                localNames = names;
+              }
+            }
+          }
+        } catch (err) {
+          console.log(`Failed to fetch local names for ${displayName}:`, err.message);
+        }
+      }
+    }
+
     // Generate grid coordinates
-    const zones = generateZones(displayName.toLowerCase(), config.lat, config.lng);
+    const zones = generateZones(displayName.toLowerCase(), config.lat, config.lng, latSpan, lngSpan, localNames, displayName);
     const lats = zones.map(z => z.lat).join(',');
     const lngs = zones.map(z => z.lng).join(',');
 
     try {
-      // Fetch real weather data for ALL 25 zones in parallel
-      const [weatherRes, aqiRes] = await Promise.all([
-        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,relative_humidity_2m&timezone=auto`),
-        fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lngs}&current=european_aqi&timezone=auto`)
-      ]);
+      // Fetch real weather from OWM (if key set) or Open-Meteo as fallback
+      const owmKey = process.env.OWM_API_KEY;
+      if (owmKey) {
+        // OWM allows up to 60 calls/min on free tier — fetch all 25 zones in parallel
+        const owmResults = await Promise.all(
+          zones.map(z =>
+            fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${z.lat}&lon=${z.lng}&appid=${owmKey}&units=metric`)
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null)
+          )
+        );
+        owmResults.forEach((data, i) => {
+          if (data && data.main) {
+            zones[i].temp = data.main.temp;
+            zones[i].humidity = data.main.humidity;
+          }
+        });
+      } else {
+        // Open-Meteo batch fallback
+        const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,relative_humidity_2m&timezone=auto`);
+        const weatherData = await weatherRes.json();
+        zones.forEach((zone, i) => {
+          if (Array.isArray(weatherData) && weatherData[i] && weatherData[i].current) {
+            zone.temp = weatherData[i].current.temperature_2m || 25;
+            zone.humidity = weatherData[i].current.relative_humidity_2m || 50;
+          } else if (weatherData.current) {
+            zone.temp = weatherData.current.temperature_2m || 25;
+            zone.humidity = weatherData.current.relative_humidity_2m || 50;
+          }
+        });
+      }
 
-      const weatherData = await weatherRes.json();
+      // ── Apply Urban Heat Island (UHI) Variation ──
+      // Real weather APIs often return the same temp for points 2-5km apart.
+      // We simulate local micro-climates based on land use and density.
+      zones.forEach(zone => {
+        let uhiOffset = 0;
+        // Density impact (up to +2.5°C for extreme high density)
+        uhiOffset += (zone.density / 50000) * 2.5;
+        // Land use impact
+        if (zone.landUse === 'Industrial') uhiOffset += 2.0;
+        if (zone.landUse === 'Commercial') uhiOffset += 1.2;
+        if (zone.landUse === 'Mixed Use') uhiOffset += 0.5;
+        if (zone.landUse === 'Green Space') uhiOffset -= 1.5;
+        
+        // Green cover impact
+        uhiOffset -= (zone.greenCover / 100) * 3.0;
+
+        // Apply and round
+        zone.temp = +(zone.temp + uhiOffset).toFixed(1);
+      });
+
+      // Fetch AQI for all zones (Open-Meteo US AQI — best free coverage for India)
+      const aqiRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lngs}&current=us_aqi,pm2_5&timezone=auto`);
       const aqiData = await aqiRes.json();
 
-      // Populate zones with real data
       zones.forEach((zone, i) => {
-        if (Array.isArray(weatherData) && weatherData[i] && weatherData[i].current) {
-          zone.temp = weatherData[i].current.temperature_2m || 25;
-          zone.humidity = weatherData[i].current.relative_humidity_2m || 50;
-        } else if (weatherData.current) { // Fallback if single element
-          zone.temp = weatherData.current.temperature_2m || 25;
-          zone.humidity = weatherData.current.relative_humidity_2m || 50;
+        // Try us_aqi first, then pm2_5 conversion, then seeded realistic fallback
+        let aqiValue = null;
+        const aqiItem = Array.isArray(aqiData) ? aqiData[i] : aqiData;
+        if (aqiItem && aqiItem.current) {
+          if (aqiItem.current.us_aqi !== null && aqiItem.current.us_aqi !== undefined) {
+            aqiValue = aqiItem.current.us_aqi;
+          } else if (aqiItem.current.pm2_5 !== null && aqiItem.current.pm2_5 !== undefined) {
+            // Approx PM2.5 to US AQI conversion
+            const pm = aqiItem.current.pm2_5;
+            aqiValue = pm <= 12 ? Math.round(pm * 4.17)
+              : pm <= 35.4 ? Math.round(50 + (pm - 12) * 2.10)
+              : pm <= 55.4 ? Math.round(100 + (pm - 35.4) * 2.50)
+              : Math.round(150 + (pm - 55.4) * 1.47);
+          }
         }
 
-        if (Array.isArray(aqiData) && aqiData[i] && aqiData[i].current && aqiData[i].current.european_aqi !== null) {
-          zone.aqi = aqiData[i].current.european_aqi;
-        } else if (aqiData.current && aqiData.current.european_aqi !== null) { // Fallback if single element
-          zone.aqi = aqiData.current.european_aqi;
-        } else {
-          // Fallback AQI if entirely missing
-          zone.aqi = Math.round(50 + (zone.temp > 30 ? (zone.temp - 30) * 5 : 0) + Math.random() * 20);
+        if (aqiValue === null) {
+          // Seeded deterministic fallback — realistic for dense Indian urban areas
+          const seed = zone.lat * 1000 + zone.lng * 100 + i;
+          const pseudoRand = ((Math.sin(seed * 127.1 + i * 311.7) * 43758.5453) % 1 + 1) % 1;
+          const baseAqi = zone.temp > 35 ? 160 : zone.temp > 30 ? 110 : 75;
+          const densityBonus = zone.density > 30000 ? 60 : zone.density > 15000 ? 30 : 0;
+          const greenDiscount = zone.greenCover > 30 ? -30 : zone.greenCover > 15 ? -10 : 0;
+          aqiValue = Math.round(baseAqi + densityBonus + greenDiscount + pseudoRand * 40);
         }
+
+        zone.aqi = Math.max(10, Math.min(500, aqiValue));
       });
     } catch (apiErr) {
       console.error('Failed to fetch real data for grid, using fallback', apiErr);
@@ -679,7 +790,7 @@ app.get('/api/reports/:userId', authenticateToken, async (req, res) => {
   }
 });
 
-// --- REAL-TIME TEMPERATURE BY COORDINATES ---
+// --- REAL-TIME TEMPERATURE BY COORDINATES (OpenWeatherMap) ---
 
 app.get('/api/temperature', async (req, res) => {
   try {
@@ -695,7 +806,33 @@ app.get('/api/temperature', async (req, res) => {
       return res.status(400).json({ error: 'Invalid lat/lng values' });
     }
 
-    // Run Open-Meteo (Weather+Wind) + Nominatim reverse geocoding in parallel
+    const owmKey = process.env.OWM_API_KEY;
+
+    if (owmKey) {
+      // ── OWM path: accurate real-time data including weather description & icon
+      const owmUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${parsedLat}&lon=${parsedLng}&appid=${owmKey}&units=metric`;
+      const owmData = await fetch(owmUrl).then(r => r.ok ? r.json() : null).catch(() => null);
+
+      if (owmData && owmData.main) {
+        const locationName = owmData.name || 'Unknown location';
+        const country = owmData.sys?.country || '';
+        return res.json({
+          lat: parsedLat,
+          lng: parsedLng,
+          temp: owmData.main.temp,
+          feelsLike: owmData.main.feels_like,
+          humidity: owmData.main.humidity,
+          windSpeed: owmData.wind?.speed ? +(owmData.wind.speed * 3.6).toFixed(1) : 0, // m/s → km/h
+          description: owmData.weather?.[0]?.description || 'unknown',
+          icon: owmData.weather?.[0]?.icon || '01d',
+          locationName,
+          country,
+          realtime: true,
+        });
+      }
+    }
+
+    // ── Fallback: Open-Meteo + Nominatim (when OWM key is missing or call failed)
     const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${parsedLat}&longitude=${parsedLng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&timezone=auto`;
     const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?lat=${parsedLat}&lon=${parsedLng}&format=json&zoom=16&addressdetails=1`;
 
@@ -704,59 +841,56 @@ app.get('/api/temperature', async (req, res) => {
       fetch(nominatimUrl, { headers: { 'User-Agent': 'HeatGuard/1.0' } }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
-    let temp, humidity, feelsLike, windSpeed, description, icon;
+    let temp = 30, humidity = 50, feelsLike = 32, windSpeed = 10, description = 'unknown', icon = '01d';
 
     if (meteoData && meteoData.current) {
       temp = meteoData.current.temperature_2m;
       humidity = meteoData.current.relative_humidity_2m;
       feelsLike = meteoData.current.apparent_temperature;
       windSpeed = meteoData.current.wind_speed_10m;
-      
-      // Simple WMO code mapping for Open-Meteo
       const code = meteoData.current.weather_code;
       if (code <= 3) { description = 'clear/partly cloudy'; icon = '01d'; }
       else if (code <= 48) { description = 'fog/mist'; icon = '50d'; }
       else if (code <= 69) { description = 'rain/drizzle'; icon = '09d'; }
       else if (code <= 79) { description = 'snow'; icon = '13d'; }
       else { description = 'storm/heavy rain'; icon = '11d'; }
-    } else {
-      // API failure fallback
-      temp = 30; humidity = 50; feelsLike = 32; windSpeed = 10; description = 'unknown'; icon = '01d';
     }
 
-    // Build precise location name from Nominatim
-    let locationName = 'Unknown location';
-    let country = '';
+    let locationName = 'Unknown location', country = '';
     if (nominatimData && nominatimData.address) {
       const addr = nominatimData.address;
       locationName = addr.neighbourhood || addr.suburb || addr.quarter || addr.village || addr.town || addr.city || addr.county || 'Unknown';
       country = addr.country_code ? addr.country_code.toUpperCase() : '';
     }
 
-    return res.json({
-      lat: parsedLat,
-      lng: parsedLng,
-      temp,
-      feelsLike,
-      humidity,
-      windSpeed,
-      description,
-      icon,
-      locationName,
-      country,
-      realtime: true, // Always real data now via Open-Meteo!
-    });
+  return res.json({ lat: parsedLat, lng: parsedLng, temp, feelsLike, humidity, windSpeed, description, icon, locationName, country, realtime: !!owmKey });
   } catch (error) {
     console.error('/api/temperature error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// --- STATIC ASSETS (Production) ---
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../heatguard/dist');
+  app.use(express.static(distPath));
+  
+  // Catch-all to serve the frontend for any non-API request (Express 5 compatible)
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/')) {
+      return res.sendFile(path.join(distPath, 'index.html'));
+    }
+    next();
+  });
+}
+
 // Initialize DB and Start Server
-initDB().then(() => {
+initDB().catch(err => {
+  console.error('CRITICAL: Failed to initialize database on startup.', err.message);
+  console.error('The server will start but database features may fail.');
+}).finally(() => {
   app.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
-}).catch(err => {
-  console.error('Failed to initialize database', err);
 });

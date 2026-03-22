@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import { LanguageContext } from '../context/LanguageContext';
 import { exportReport } from '../utils/pdfExport';
 
 const TYPE_COLORS = {
@@ -13,14 +14,15 @@ const TYPE_COLORS = {
 
 export default function AIPanel({ recommendations, loading, zone, cityName }) {
   const { user } = useContext(AuthContext);
+  const { t } = useContext(LanguageContext);
 
   if (loading) {
     return (
       <div className="ai-panel">
-        <div className="ai-title">AI Recommendations</div>
+        <div className="ai-title">{t('ai_recommendations')}</div>
         <div className="ai-loading">
           <div className="ai-spinner" />
-          <span>Analysing zone data...</span>
+          <span>{t('analysing_zone_data')}</span>
         </div>
       </div>
     );
@@ -37,7 +39,7 @@ export default function AIPanel({ recommendations, loading, zone, cityName }) {
 
   return (
     <div className="ai-panel fade-in" id={`report-zone-${zone.id}`}>
-      <div className="ai-title">AI Recommendations</div>
+      <div className="ai-title">{t('ai_recommendations')}</div>
 
       {interventions &&
         interventions.map((item, i) => {
@@ -64,7 +66,7 @@ export default function AIPanel({ recommendations, loading, zone, cityName }) {
           <div className="ai-summary-text">{summary}</div>
           {projected_temp_reduction && (
             <div className="ai-projected">
-              🌡️ Projected: {projected_temp_reduction}
+              🌡️ {t('projected')}: {projected_temp_reduction}
             </div>
           )}
         </div>
@@ -74,7 +76,7 @@ export default function AIPanel({ recommendations, loading, zone, cityName }) {
         className="btn" 
         style={{ marginTop: '15px', width: '100%', opacity: user ? 1 : 0.5 }}
       >
-        {user ? 'Export Report (PDF)' : 'Login to Export'}
+        {user ? t('export_report') : t('login_to_export')}
       </button>
     </div>
   );

@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useContext } from 'react';
 import L from 'leaflet';
 import 'leaflet.heat';
 import { getRisk } from '../utils/riskHelpers';
+import { LanguageContext } from '../context/LanguageContext';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Google Maps-style road tile (standard Maps look, with English labels)
 const TILE_URL = 'https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}';
@@ -29,13 +32,13 @@ function getWeatherEmoji(description = '', temp = 30) {
   return temp > 35 ? '🌡️' : '🌤️';
 }
 
-function buildPopupHTML(data, isLoading) {
+function buildPopupHTML(data, isLoading, t) {
   if (isLoading) {
     return `
       <div class="temp-popup-inner">
         <div class="temp-popup-loading">
           <div class="temp-popup-spinner"></div>
-          <span>Fetching temperature…</span>
+          <span>${t('fetching_temperature')}</span>
         </div>
       </div>`;
   }
@@ -55,35 +58,35 @@ function buildPopupHTML(data, isLoading) {
       : coordStr;
 
   return `
-    <div class="temp-popup-inner">
-      <div class="temp-popup-header">
-        <div class="temp-popup-location">${locationStr}</div>
-        <div class="temp-popup-coords">${coordStr}</div>
-        ${data.realtime
-          ? '<div class="temp-popup-live">● Live</div>'
-          : '<div class="temp-popup-estimated">★ Estimated (no OWM key)</div>'}
-      </div>
-      <div class="temp-popup-main">
-        <span class="temp-popup-emoji">${emoji}</span>
-        <span class="temp-popup-temp" style="color:${riskObj.color}">${data.temp}°C</span>
-        <span class="temp-popup-risk" style="color:${riskObj.color}">${riskObj.label}</span>
-      </div>
-      <div class="temp-popup-desc">${data.description}</div>
-      <div class="temp-popup-stats">
-        <div class="temp-stat">
-          <span class="temp-stat-label">Feels Like</span>
-          <span class="temp-stat-value">${data.feelsLike}°C</span>
+      <div class="temp-popup-inner">
+        <div class="temp-popup-header">
+          <div class="temp-popup-location">${locationStr}</div>
+          <div class="temp-popup-coords">${coordStr}</div>
+          ${data.realtime
+            ? `<div class="temp-popup-live">● ${t('live')}</div>`
+            : `<div class="temp-popup-estimated">★ ${t('projected')}</div>`}
         </div>
-        <div class="temp-stat">
-          <span class="temp-stat-label">Humidity</span>
-          <span class="temp-stat-value">${data.humidity}%</span>
+        <div class="temp-popup-main">
+          <span class="temp-popup-emoji">${emoji}</span>
+          <span class="temp-popup-temp" style="color:${riskObj.color}">${data.temp}°C</span>
+          <span class="temp-popup-risk" style="color:${riskObj.color}">${t(riskObj.label.toLowerCase().replace(' ', '_')) || riskObj.label}</span>
         </div>
-        <div class="temp-stat">
-          <span class="temp-stat-label">Wind</span>
-          <span class="temp-stat-value">${data.windSpeed} km/h</span>
+        <div class="temp-popup-desc">${data.description}</div>
+        <div class="temp-popup-stats">
+          <div class="temp-stat">
+            <span class="temp-stat-label">${t('feels_like')}</span>
+            <span class="temp-stat-value">${data.feelsLike}°C</span>
+          </div>
+          <div class="temp-stat">
+            <span class="temp-stat-label">${t('humidity')}</span>
+            <span class="temp-stat-value">${data.humidity}%</span>
+          </div>
+          <div class="temp-stat">
+            <span class="temp-stat-label">${t('wind')}</span>
+            <span class="temp-stat-value">${data.windSpeed} km/h</span>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
 }
 
 // Interpolate temp/aqi/greenCover at cursor position using inverse-distance weighting
@@ -127,6 +130,56 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
   const [hoverData, setHoverData] = useState(null);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
 
+  // ── Shared popup logic ────────────────────────────────────────────────────
+  const showLocationCard = React.useCallback(async (lat, lng, showPinMarker = true) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (clickMarkerRef.current) { map.removeLayer(clickMarkerRef.current); clickMarkerRef.current = null; }
+    if (clickPopupRef.current) { map.removeLayer(clickPopupRef.current); clickPopupRef.current = null; }
+
+    if (showPinMarker) {
+      const pinIcon = L.divIcon({
+        className: '',
+        html: `<div class="click-pin-icon">📍</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 28],
+      });
+      clickMarkerRef.current = L.marker([lat, lng], { icon: pinIcon }).addTo(map);
+    }
+
+    const popup = L.popup({
+      className: 'temp-popup-wrapper',
+      closeButton: true,
+      autoClose: false,
+      closeOnClick: false,
+      maxWidth: 290,
+      offset: [0, showPinMarker ? -10 : 0],
+    })
+      .setLatLng([lat, lng])
+      .setContent(buildPopupHTML(null, true, t))
+      .addTo(map);
+      
+    clickPopupRef.current = popup;
+
+    popup.on('remove', () => {
+      if (clickMarkerRef.current) { map.removeLayer(clickMarkerRef.current); clickMarkerRef.current = null; }
+      if (clickPopupRef.current === popup) clickPopupRef.current = null;
+    });
+
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/temperature?lat=${lat}&lng=${lng}`);
+      const data = await resp.json();
+      if (clickPopupRef.current === popup) {
+        clickPopupRef.current.setContent(buildPopupHTML(data, false, t));
+      }
+    } catch {
+      if (clickPopupRef.current === popup) {
+        clickPopupRef.current.setContent(buildPopupHTML({ error: 'Could not fetch temperature' }, false, t));
+      }
+    }
+  }, [t]);
+
   // ── Map initialisation ────────────────────────────────────────────────────
   useEffect(() => {
     if (mapInstanceRef.current) return;
@@ -141,7 +194,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     mapInstanceRef.current = map;
 
     // Click-anywhere: show OWM temperature popup card AND call onMapClick for sidebar
-    map.on('click', async (e) => {
+    map.on('click', (e) => {
       const { lat, lng } = e.latlng;
 
       // Always notify App.jsx (sidebar pin zone update)
@@ -150,42 +203,7 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
       }
 
       // Always show the OWM temperature popup card with accurate Nominatim location
-      if (clickMarkerRef.current) { map.removeLayer(clickMarkerRef.current); clickMarkerRef.current = null; }
-      if (clickPopupRef.current) { map.removeLayer(clickPopupRef.current); clickPopupRef.current = null; }
-
-      const pinIcon = L.divIcon({
-        className: '',
-        html: `<div class="click-pin-icon">📍</div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 28],
-      });
-      clickMarkerRef.current = L.marker([lat, lng], { icon: pinIcon }).addTo(map);
-
-      const popup = L.popup({
-        className: 'temp-popup-wrapper',
-        closeButton: true,
-        autoClose: false,
-        closeOnClick: false,
-        maxWidth: 290,
-        offset: [0, -10],
-      })
-        .setLatLng([lat, lng])
-        .setContent(buildPopupHTML(null, true))
-        .addTo(map);
-      clickPopupRef.current = popup;
-
-      try {
-        const resp = await fetch(`http://localhost:5000/api/temperature?lat=${lat}&lng=${lng}`);
-        const data = await resp.json();
-        if (clickPopupRef.current) clickPopupRef.current.setContent(buildPopupHTML(data, false));
-      } catch {
-        if (clickPopupRef.current) clickPopupRef.current.setContent(buildPopupHTML({ error: 'Could not fetch temperature' }, false));
-      }
-
-      popup.on('remove', () => {
-        if (clickMarkerRef.current) { map.removeLayer(clickMarkerRef.current); clickMarkerRef.current = null; }
-        clickPopupRef.current = null;
-      });
+      showLocationCard(lat, lng, true);
     });
 
     // Hover: show live interpolated data tooltip (teammate feature)
@@ -197,7 +215,14 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     });
     map.on('mouseout', () => setHoverData(null));
 
-    return () => { map.remove(); mapInstanceRef.current = null; };
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      userMarkerRef.current = null;
+      clickMarkerRef.current = null;
+      clickPopupRef.current = null;
+      routeLayerRef.current = null;
+    };
   }, []);
 
   // Update user location marker
@@ -207,12 +232,12 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
     if (!userMarkerRef.current) {
       const userIcon = L.divIcon({
-        html: `<div style="width: 16px; height: 16px; background-color: #388bfd; border: 3px solid #0d1117; border-radius: 50%; box-shadow: 0 0 8px rgba(56,139,253,0.8);"></div>`,
+        html: `<div style="width: 18px; height: 18px; background-color: #00e5ff; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 16px #00e5ff, inset 0 0 4px rgba(0,0,0,0.5);"></div>`,
         className: 'user-location-icon',
-        iconSize: [22, 22],
-        iconAnchor: [11, 11]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
       });
-      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon, zIndexOffset: 99999 }).addTo(map);
     } else {
       userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
     }
@@ -223,16 +248,41 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
     const map = mapInstanceRef.current;
     if (!map) return;
 
+    // Create a dedicated high-z-index pane for routes so heat grid zones never overlap it
+    if (!map.getPane('routePane')) {
+      map.createPane('routePane');
+      map.getPane('routePane').style.zIndex = 450;
+      map.getPane('routePane').style.pointerEvents = 'none';
+    }
+
     if (routeLayerRef.current) {
       map.removeLayer(routeLayerRef.current);
       routeLayerRef.current = null;
     }
 
     if (routeGeoJSON) {
-      routeLayerRef.current = L.geoJSON(routeGeoJSON, {
-        style: { color: '#3fb950', weight: 6, opacity: 0.9 }
-      }).addTo(map);
-      map.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.5 });
+      const routeGroup = L.layerGroup();
+
+      const line = L.geoJSON(routeGeoJSON, {
+        pane: 'routePane',
+        style: { color: '#3fb950', weight: 6, opacity: 1 }
+      });
+      routeGroup.addLayer(line);
+
+      const coords = routeGeoJSON.coordinates;
+      if (coords && coords.length > 1) {
+        const startPoint = coords[0];
+        const endPoint = coords[coords.length - 1];
+
+        const startIcon = L.divIcon({ html: '<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">🏁</div>', className: 'route-marker', iconSize: [24, 24], iconAnchor: [12, 12] });
+        const endIcon = L.divIcon({ html: '<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">📍</div>', className: 'route-marker', iconSize: [24, 24], iconAnchor: [12, 24] });
+
+        routeGroup.addLayer(L.marker([startPoint[1], startPoint[0]], { icon: startIcon }).bindTooltip('Start', { permanent: true, direction: 'top', offset: [0, -12] }));
+        routeGroup.addLayer(L.marker([endPoint[1], endPoint[0]], { icon: endIcon }).bindTooltip('End', { permanent: true, direction: 'top', offset: [0, -24] }));
+      }
+
+      routeLayerRef.current = routeGroup.addTo(map);
+      map.fitBounds(line.getBounds(), { padding: [50, 50], maxZoom: 15, animate: true, duration: 1.5 });
     }
   }, [routeGeoJSON]);
 
@@ -286,21 +336,22 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
     if (!zones.length) return;
 
+    // Clear the temporary map-click marker/popup only if we just clicked a standard grid zone
+    if (selectedZone && !selectedZone.isCustomPin) {
+      if (clickPopupRef.current) {
+        map.removeLayer(clickPopupRef.current);
+        clickPopupRef.current = null;
+      }
+      if (clickMarkerRef.current) {
+        map.removeLayer(clickMarkerRef.current);
+        clickMarkerRef.current = null;
+      }
+    }
+
     zones.forEach((zone) => {
       const temp = afterMode ? +(zone.temp * 0.82).toFixed(1) : zone.temp;
       const risk = getRisk(temp);
       const isSelected = selectedZone && selectedZone.id === zone.id;
-
-      if (!selectedZone) {
-         if (clickPopupRef.current) {
-            map.removeLayer(clickPopupRef.current);
-            clickPopupRef.current = null;
-         }
-         if (clickMarkerRef.current) {
-            map.removeLayer(clickMarkerRef.current);
-            clickMarkerRef.current = null;
-         }
-      }
 
       if (zone.isCustomPin) {
         // ── Teammate's custom SVG pin marker for dropped pins ────────────────
@@ -340,9 +391,11 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
 
       } else if (activeTab === 'overview') {
         // ── Our colored rectangle for regular grid zones ──────────────────────
+        const halfLatSpan = (zone.latSpan || 0.06) / 2;
+        const halfLngSpan = (zone.lngSpan || 0.06) / 2;
         const bounds = [
-          [zone.lat - HALF_SPAN, zone.lng - HALF_SPAN],
-          [zone.lat + HALF_SPAN, zone.lng + HALF_SPAN],
+          [zone.lat - halfLatSpan, zone.lng - halfLngSpan],
+          [zone.lat + halfLatSpan, zone.lng + halfLngSpan],
         ];
 
         const rect = L.rectangle(bounds, {
@@ -369,6 +422,8 @@ export default function MapView({ center, zoom, zones, afterMode, onZoneClick, s
         rect.on('click', (e) => {
           L.DomEvent.stopPropagation(e);
           onZoneClick(zone);
+          // Show the location card on the clicked point (without the pin marker)
+          showLocationCard(e.latlng.lat, e.latlng.lng, false);
         });
 
         zoneLayersRef.current.push(rect);

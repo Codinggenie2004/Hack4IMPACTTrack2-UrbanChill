@@ -10,6 +10,8 @@ import { getRisk } from './utils/riskHelpers';
 import { getRecommendations } from './utils/claudeAPI';
 import { LanguageContext } from './context/LanguageContext';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 export default function App() {
   const [cityName, setCityName] = useState('');
   const [center, setCenter] = useState({ lat: 19.076, lng: 72.8777 });
@@ -19,7 +21,7 @@ export default function App() {
   const [recommendations, setRecommendations] = useState(null);
   const [recLoading, setRecLoading] = useState(false);
   const [afterMode, setAfterMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('zone');
+  const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
@@ -30,10 +32,24 @@ export default function App() {
 
   const { lang } = React.useContext(LanguageContext) || { lang: 'en' };
   const [lastUpdated, setLastUpdated] = useState(null);
+  
+  // Mobile Responsiveness States
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (!mobile) setSidebarOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchCityData = useCallback(async (query) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/city/${encodeURIComponent(query)}`);
+      const res = await fetch(`${API_BASE_URL}/api/city/${encodeURIComponent(query)}`);
       if (!res.ok) throw new Error('Failed to load location data from server.');
       const data = await res.json();
       
@@ -72,6 +88,7 @@ export default function App() {
     setSelectedZone(null);
     setRecommendations(null);
     setAfterMode(false);
+    setActiveTab('overview');
 
     await fetchCityData(input.trim());
     setLoading(false);
@@ -143,6 +160,11 @@ export default function App() {
     setRecLoading(true);
     setRecommendations(null);
 
+    // If the user clicked a regular grid zone, delete any temporary custom pins
+    if (!zone.isCustomPin) {
+      setZones(prev => prev.filter(z => !z.isCustomPin));
+    }
+
     try {
       const recs = await getRecommendations(zone, lang);
       setRecommendations(recs);
@@ -170,7 +192,7 @@ export default function App() {
   const handleMapClick = useCallback(async (lat, lng) => {
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:5000/api/pin', {
+      const res = await fetch(`${API_BASE_URL}/api/pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng })
@@ -280,7 +302,7 @@ export default function App() {
         }
       }
 
-      const advRes = await fetch('http://localhost:5000/api/route-plan', {
+      const advRes = await fetch(`${API_BASE_URL}/api/route-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -311,14 +333,24 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <TopBar onSearch={handleSearch} stats={stats} loading={loading} />
+      <TopBar 
+        onSearch={handleSearch} 
+        stats={stats} 
+        loading={loading} 
+        isMobile={isMobile}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+      />
       <div className="main-area">
         <MapView
           center={center}
           zoom={zoom}
           zones={zones}
           afterMode={afterMode}
-          onZoneClick={handleZoneClick}
+          onZoneClick={(z) => {
+            handleZoneClick(z);
+            if (isMobile) setSidebarOpen(true);
+          }}
           selectedZone={selectedZone}
           onMapClick={handleMapClick}
           userLocation={userLocation}
@@ -326,22 +358,30 @@ export default function App() {
           activeTab={activeTab}
           routePOIs={routeAdvisory?.pois}
         />
-        <Sidebar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          selectedZone={selectedZone}
-          recommendations={recommendations}
-          recLoading={recLoading}
-          zones={zones}
-          cityName={cityName}
-          onZoneSelect={handleZoneSelectFromOverview}
-          afterMode={afterMode}
-          onPlanRoute={handlePlanRoute}
-          routeLoading={routeLoading}
-          routeAdvisory={routeAdvisory}
-          userLocation={userLocation}
-          onCloseZone={handleCloseZone}
-        />
+        <div className={`sidebar-wrapper ${isMobile ? 'mobile' : ''} ${sidebarOpen ? 'open' : ''}`}>
+          {isMobile && sidebarOpen && (
+            <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+          )}
+          <Sidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            selectedZone={selectedZone}
+            recommendations={recommendations}
+            recLoading={recLoading}
+            zones={zones}
+            cityName={cityName}
+            onZoneSelect={(z) => {
+              handleZoneSelectFromOverview(z);
+              if (isMobile) setSidebarOpen(true);
+            }}
+            afterMode={afterMode}
+            onPlanRoute={handlePlanRoute}
+            routeLoading={routeLoading}
+            routeAdvisory={routeAdvisory}
+            userLocation={userLocation}
+            onCloseZone={handleCloseZone}
+          />
+        </div>
       </div>
       <BottomBar afterMode={afterMode} onToggle={setAfterMode} lastUpdated={lastUpdated} onLocateMe={handleLocateMe} />
       <AuthModal />
