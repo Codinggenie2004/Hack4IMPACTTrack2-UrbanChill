@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
@@ -51,9 +51,9 @@ app.post('/api/auth/signup', async (req, res) => {
 
     const token = jwt.sign({ id: result.lastID, email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: result.lastID, email } });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+  } catch (err) {
+    console.error('Signup Error:', error);
+    res.status(500).json({ error: err.message || 'Server error during signup' });
   }
 });
 
@@ -71,9 +71,9 @@ app.post('/api/auth/login', async (req, res) => {
 
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: user.id, email: user.email } });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Server error' });
+  } catch (err) {
+    console.error('Login Error:', error);
+    res.status(500).json({ error: err.message || 'Server error during login' });
   }
 });
 
@@ -89,10 +89,10 @@ function getDetailedMockRecommendations(zone, risk) {
   };
 
   const reductionMap = {
-    LOW: `−${(1.0 + pseudoRand(1) * 0.8).toFixed(1)}°C`,
-    MODERATE: `−${(2.0 + pseudoRand(2) * 1.5).toFixed(1)}°C`,
-    HIGH: `−${(3.5 + pseudoRand(3) * 1.5).toFixed(1)}°C`,
-    CRITICAL: `−${(4.5 + pseudoRand(4) * 2.0).toFixed(1)}°C`,
+    LOW: `âˆ’${(1.0 + pseudoRand(1) * 0.8).toFixed(1)}Â°C`,
+    MODERATE: `âˆ’${(2.0 + pseudoRand(2) * 1.5).toFixed(1)}Â°C`,
+    HIGH: `âˆ’${(3.5 + pseudoRand(3) * 1.5).toFixed(1)}Â°C`,
+    CRITICAL: `âˆ’${(4.5 + pseudoRand(4) * 2.0).toFixed(1)}Â°C`,
   };
 
   let allInterventions = [];
@@ -101,19 +101,19 @@ function getDetailedMockRecommendations(zone, risk) {
   if (zone.temp > 38) {
     allInterventions.push({
       type: "WATER FEATURE",
-      action: `Install high-efficiency evaporative misting systems at ${Math.floor(2 + pseudoRand(5)*5)} major public squares in ${zone.name} to combat the extreme ${zone.temp}°C heat.`,
-      impact: `−2.5°C localised cooling during peak afternoon hours.`
+      action: `Install high-efficiency evaporative misting systems at ${Math.floor(2 + pseudoRand(5)*5)} major public squares in ${zone.name} to combat the extreme ${zone.temp}Â°C heat.`,
+      impact: `âˆ’2.5Â°C localised cooling during peak afternoon hours.`
     });
     allInterventions.push({
       type: "COOL PAVEMENT",
       action: `Apply solar-reflective coatings on ${Math.floor(15 + pseudoRand(6)*25)}% of exposed asphalt roads in the ${zone.landUse.toLowerCase()} sectors.`,
-      impact: `Reduces surface temperature by up to 5°C, lowering ambient heat.`
+      impact: `Reduces surface temperature by up to 5Â°C, lowering ambient heat.`
     });
   } else {
     allInterventions.push({
       type: "COOL PAVEMENT",
       action: `Retrofit pedestrian walkways in ${zone.name} with light-coloured, permeable paving to reduce surface heat retention.`,
-      impact: `−0.8°C local temp, 25% reduction in surface heat retention.`
+      impact: `âˆ’0.8Â°C local temp, 25% reduction in surface heat retention.`
     });
   }
 
@@ -122,7 +122,7 @@ function getDetailedMockRecommendations(zone, risk) {
     allInterventions.push({
       type: "GREEN WALL",
       action: `Construct vertical moss and ivy green walls on ${Math.floor(5 + pseudoRand(7)*10)} major ${zone.landUse.toLowerCase()} buildings to filter out PM2.5 from the severe ${zone.aqi} AQI air.`,
-      impact: `Absorbs 30% of local particulate matter, −1.5°C facade temp.`
+      impact: `Absorbs 30% of local particulate matter, âˆ’1.5Â°C facade temp.`
     });
     allInterventions.push({
       type: "TREES",
@@ -133,7 +133,7 @@ function getDetailedMockRecommendations(zone, risk) {
     allInterventions.push({
       type: "TREES",
       action: `Increase canopy density by planting ${Math.floor(50 + pseudoRand(9)*100)} large-canopy native shade trees scattered across ${zone.name}.`,
-      impact: `−1.2°C avg temp under canopy, improves local biodiversity.`
+      impact: `âˆ’1.2Â°C avg temp under canopy, improves local biodiversity.`
     });
   }
 
@@ -142,18 +142,18 @@ function getDetailedMockRecommendations(zone, risk) {
     allInterventions.push({
       type: "ROOFTOP GARDEN",
       action: `Mandate the conversion of 40% of flat concrete roofs in this low-vegetation zone (only ${zone.greenCover}% green cover) to drought-resistant green roofs.`,
-      impact: `−1.2°C building surface temp, drastically reduces urban runoff.`
+      impact: `âˆ’1.2Â°C building surface temp, drastically reduces urban runoff.`
     });
     allInterventions.push({
       type: "PARK",
       action: `Reclaim abandoned plots to develop ${Math.floor(1 + pseudoRand(10)*3)} pocket parks with native shrubs at the centre of ${zone.name}.`,
-      impact: `−2.0°C within 300m radius, creating vital green corridors.`
+      impact: `âˆ’2.0Â°C within 300m radius, creating vital green corridors.`
     });
   } else {
     allInterventions.push({
       type: "WATER FEATURE",
       action: `Add seasonal water bodies and shaded resting pavilions throughout the existing green spaces in ${zone.name}.`,
-      impact: `−1.5°C ambient temp around the water bodies.`
+      impact: `âˆ’1.5Â°C ambient temp around the water bodies.`
     });
   }
 
@@ -162,13 +162,13 @@ function getDetailedMockRecommendations(zone, risk) {
     allInterventions.push({
       type: "ROOFTOP GARDEN",
       action: `Deploy solar-green hybrid roofs combining PV panels and sedum vegetation over massive industrial sheds in ${zone.name}.`,
-      impact: `Generates renewable energy while providing −1.0°C surface cooling.`
+      impact: `Generates renewable energy while providing âˆ’1.0Â°C surface cooling.`
     });
   } else if (zone.landUse === 'Residential') {
      allInterventions.push({
       type: "TREES",
       action: `Distribute ${Math.floor(500 + pseudoRand(13)*300)} native saplings to households in ${zone.name} to plant in private courtyards and along residential streets.`,
-      impact: `Fosters community ownership, −1.5°C ambient cooling at block level.`
+      impact: `Fosters community ownership, âˆ’1.5Â°C ambient cooling at block level.`
     });
   }
 
@@ -181,8 +181,8 @@ function getDetailedMockRecommendations(zone, risk) {
 
   return {
     interventions: selectedInterventions,
-    summary: `${zone.name} is facing ${risk.label.toLowerCase()} heat stress, exacerbated by its current weather profile (${zone.temp}°C, AQI: ${zone.aqi}). Given its status as a ${zone.landUse} area with ${zone.greenCover}% green cover, the most urgent priority is deploying ${selectedInterventions[0].type.toLowerCase()} to provide immediate climatic relief to the community.`,
-    projected_temp_reduction: reductionMap[risk.label] || "−2.5°C",
+    summary: `${zone.name} is facing ${risk.label.toLowerCase()} heat stress, exacerbated by its current weather profile (${zone.temp}Â°C, AQI: ${zone.aqi}). Given its status as a ${zone.landUse} area with ${zone.greenCover}% green cover, the most urgent priority is deploying ${selectedInterventions[0].type.toLowerCase()} to provide immediate climatic relief to the community.`,
+    projected_temp_reduction: reductionMap[risk.label] || "âˆ’2.5Â°C",
     priority: priorityLevel,
     residents_benefited: Math.round(zone.density * (0.1 + pseudoRand(12)*0.2)),
   };
@@ -213,7 +213,7 @@ app.post('/api/analyse-zone', async (req, res) => {
     const langName = language ? (langMap[language] || 'English') : 'English';
     const languageInstruction = language && language !== 'en' ? ` IMPORTANT SYSTEM INSTRUCTION: You MUST directly translate every single JSON string value (especially 'action', 'impact', 'summary', and 'projected_temp_reduction') into fluent and natural ${langName}. Do NOT provide the values lightly translated or in English. Ensure the JSON keys remain exactly as requested in English, but the output text MUST be fully localized in the requested language (${langName}).` : '';
 
-    const prompt = `You are an urban climate expert. Analyse this urban zone and give 3 specific green infrastructure interventions.${languageInstruction}\n\nZone data:\n- Name: ${zone.name}\n- Land use: ${zone.landUse}\n- Surface temperature: ${zone.temp}°C\n- Green cover: ${zone.greenCover}%\n- Air Quality Index: ${zone.aqi}\n- Population density: ${zone.density} people/km²\n- Humidity: ${zone.humidity}%\n- Heat risk level: ${risk.label}\n\nRespond ONLY with a valid JSON object. No markdown, no explanation outside JSON:\n{\n  "interventions": [\n    {\n      "type": "TREES" | "COOL PAVEMENT" | "ROOFTOP GARDEN" | "GREEN WALL" | "WATER FEATURE" | "PARK",\n      "action": "specific actionable recommendation in one sentence",\n      "impact": "projected temperature reduction and benefit"\n    }\n  ],\n  "summary": "2-sentence overall assessment and most urgent priority",\n  "projected_temp_reduction": "e.g. −3.2°C with all interventions",\n  "priority": "HIGH" | "MEDIUM" | "LOW"\n}`;
+    const prompt = `You are an urban climate expert. Analyse this urban zone and give 3 specific green infrastructure interventions.${languageInstruction}\n\nZone data:\n- Name: ${zone.name}\n- Land use: ${zone.landUse}\n- Surface temperature: ${zone.temp}Â°C\n- Green cover: ${zone.greenCover}%\n- Air Quality Index: ${zone.aqi}\n- Population density: ${zone.density} people/kmÂ²\n- Humidity: ${zone.humidity}%\n- Heat risk level: ${risk.label}\n\nRespond ONLY with a valid JSON object. No markdown, no explanation outside JSON:\n{\n  "interventions": [\n    {\n      "type": "TREES" | "COOL PAVEMENT" | "ROOFTOP GARDEN" | "GREEN WALL" | "WATER FEATURE" | "PARK",\n      "action": "specific actionable recommendation in one sentence",\n      "impact": "projected temperature reduction and benefit"\n    }\n  ],\n  "summary": "2-sentence overall assessment and most urgent priority",\n  "projected_temp_reduction": "e.g. âˆ’3.2Â°C with all interventions",\n  "priority": "HIGH" | "MEDIUM" | "LOW"\n}`;
 
     const geminiApiKey = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null;
     
@@ -271,9 +271,9 @@ app.post('/api/analyse-zone', async (req, res) => {
     }
 
     res.json(result);
-  } catch (error) {
+  } catch (err) {
     console.error(error);
-    res.status(500).json({ error: error.message, stack: error.stack });
+    res.status(500).json({ error: err.message, stack: error.stack });
   }
 });
 
@@ -479,7 +479,7 @@ app.get('/api/city/:name', async (req, res) => {
       // Fetch real weather from OWM (if key set) or Open-Meteo as fallback
       const owmKey = process.env.OWM_API_KEY;
       if (owmKey) {
-        // OWM allows up to 60 calls/min on free tier — fetch all 25 zones in parallel
+        // OWM allows up to 60 calls/min on free tier â€” fetch all 25 zones in parallel
         const owmResults = await Promise.all(
           zones.map(z =>
             fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${z.lat}&lon=${z.lng}&appid=${owmKey}&units=metric`)
@@ -508,12 +508,12 @@ app.get('/api/city/:name', async (req, res) => {
         });
       }
 
-      // ── Apply Urban Heat Island (UHI) Variation ──
+      // â”€â”€ Apply Urban Heat Island (UHI) Variation â”€â”€
       // Real weather APIs often return the same temp for points 2-5km apart.
       // We simulate local micro-climates based on land use and density.
       zones.forEach(zone => {
         let uhiOffset = 0;
-        // Density impact (up to +2.5°C for extreme high density)
+        // Density impact (up to +2.5Â°C for extreme high density)
         uhiOffset += (zone.density / 50000) * 2.5;
         // Land use impact
         if (zone.landUse === 'Industrial') uhiOffset += 2.0;
@@ -528,7 +528,7 @@ app.get('/api/city/:name', async (req, res) => {
         zone.temp = +(zone.temp + uhiOffset).toFixed(1);
       });
 
-      // Fetch AQI for all zones (Open-Meteo US AQI — best free coverage for India)
+      // Fetch AQI for all zones (Open-Meteo US AQI â€” best free coverage for India)
       const aqiRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lngs}&current=us_aqi,pm2_5&timezone=auto`);
       const aqiData = await aqiRes.json();
 
@@ -550,7 +550,7 @@ app.get('/api/city/:name', async (req, res) => {
         }
 
         if (aqiValue === null) {
-          // Seeded deterministic fallback — realistic for dense Indian urban areas
+          // Seeded deterministic fallback â€” realistic for dense Indian urban areas
           const seed = zone.lat * 1000 + zone.lng * 100 + i;
           const pseudoRand = ((Math.sin(seed * 127.1 + i * 311.7) * 43758.5453) % 1 + 1) % 1;
           const baseAqi = zone.temp > 35 ? 160 : zone.temp > 30 ? 110 : 75;
@@ -570,9 +570,9 @@ app.get('/api/city/:name', async (req, res) => {
       config,
       zones
     });
-  } catch (error) {
+  } catch (err) {
     console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || "Server error" });
   }
 });
 
@@ -628,7 +628,7 @@ app.post('/api/pin', async (req, res) => {
 // --- Route Plan API ---
 function getMockRoutePlan(source, dest, mode) {
   return {
-    route_analysis: "⚠️ AI OFFLINE: You have not provided a GEMINI_API_KEY in the .env file! This is a hardcoded offline fallback response.",
+    route_analysis: "âš ï¸ AI OFFLINE: You have not provided a GEMINI_API_KEY in the .env file! This is a hardcoded offline fallback response.",
     water_to_carry: "Carry at least 1.5 Liters of water from home.",
     hydration_stops: [
       "Stop near local markets for Nariyal Pani (Coconut Water).",
@@ -642,7 +642,7 @@ function getMockRoutePlan(source, dest, mode) {
       `Avoid direct sun exposure during this ${mode} journey.`,
       "Wear a cap or use an umbrella."
     ],
-    estimated_cost: mode === "bus" ? "₹40 - ₹60" : mode === "bike" ? "₹50 (fuel)" : "₹0",
+    estimated_cost: mode === "bus" ? "â‚¹40 - â‚¹60" : mode === "bike" ? "â‚¹50 (fuel)" : "â‚¹0",
     summary: "Follow this shaded route plan and hydrate properly for a safe journey."
   };
 }
@@ -733,7 +733,7 @@ app.post('/api/route-plan', async (req, res) => {
       return res.json({ ...mockFallback, pois });
     }
 
-    const prompt = `You are an advanced urban heat routing AI. A user is travelling from "${source}" to "${destination}" via "${mode}". Current avg temperature is ${currentTemp || 32}°C.
+    const prompt = `You are an advanced urban heat routing AI. A user is travelling from "${source}" to "${destination}" via "${mode}". Current avg temperature is ${currentTemp || 32}Â°C.
 The user strictly requested a heat-optimized route that finds a path with more trees and shade.
 Provide a highly specific travel plan in JSON format with exactly these keys:
 {
@@ -764,7 +764,7 @@ Do not return any markdown or extra text.`;
     const finalData = JSON.parse(clean);
     finalData.pois = pois;
     res.json(finalData);
-  } catch (error) {
+  } catch (err) {
     console.error("Route Plan API Error:", error);
     const fallback = getMockRoutePlan(source, destination, mode);
     res.json({ ...fallback, pois });
@@ -784,9 +784,9 @@ app.get('/api/reports/:userId', authenticateToken, async (req, res) => {
     const db = getDB();
     const reports = await db.all(`SELECT * FROM reports WHERE user_id = ? ORDER BY created_at DESC`, [userId]);
     res.json(reports);
-  } catch (error) {
+  } catch (err) {
     console.error(error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || "Server error" });
   }
 });
 
@@ -809,7 +809,7 @@ app.get('/api/temperature', async (req, res) => {
     const owmKey = process.env.OWM_API_KEY;
 
     if (owmKey) {
-      // ── OWM path: accurate real-time data including weather description & icon
+      // â”€â”€ OWM path: accurate real-time data including weather description & icon
       const owmUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${parsedLat}&lon=${parsedLng}&appid=${owmKey}&units=metric`;
       const owmData = await fetch(owmUrl).then(r => r.ok ? r.json() : null).catch(() => null);
 
@@ -822,7 +822,7 @@ app.get('/api/temperature', async (req, res) => {
           temp: owmData.main.temp,
           feelsLike: owmData.main.feels_like,
           humidity: owmData.main.humidity,
-          windSpeed: owmData.wind?.speed ? +(owmData.wind.speed * 3.6).toFixed(1) : 0, // m/s → km/h
+          windSpeed: owmData.wind?.speed ? +(owmData.wind.speed * 3.6).toFixed(1) : 0, // m/s â†’ km/h
           description: owmData.weather?.[0]?.description || 'unknown',
           icon: owmData.weather?.[0]?.icon || '01d',
           locationName,
@@ -832,7 +832,7 @@ app.get('/api/temperature', async (req, res) => {
       }
     }
 
-    // ── Fallback: Open-Meteo + Nominatim (when OWM key is missing or call failed)
+    // â”€â”€ Fallback: Open-Meteo + Nominatim (when OWM key is missing or call failed)
     const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${parsedLat}&longitude=${parsedLng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code&timezone=auto`;
     const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?lat=${parsedLat}&lon=${parsedLng}&format=json&zoom=16&addressdetails=1`;
 
@@ -864,9 +864,9 @@ app.get('/api/temperature', async (req, res) => {
     }
 
   return res.json({ lat: parsedLat, lng: parsedLng, temp, feelsLike, humidity, windSpeed, description, icon, locationName, country, realtime: !!owmKey });
-  } catch (error) {
+  } catch (err) {
     console.error('/api/temperature error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: err.message });
   }
 });
 

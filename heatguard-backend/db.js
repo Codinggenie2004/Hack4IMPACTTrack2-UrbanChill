@@ -60,11 +60,13 @@ let db = {
 
 async function initDB() {
   try {
+    console.log('Database: Attempting to connect to PostgreSQL...');
     // Test connection
-    await pool.query('SELECT NOW()');
-    console.log('PostgreSQL Connected');
+    const res = await pool.query('SELECT NOW()');
+    console.log('PostgreSQL Connected at:', res.rows[0].now);
 
     // Create Tables
+    console.log('Database: Initializing schema...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
