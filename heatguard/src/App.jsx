@@ -266,6 +266,10 @@ export default function App() {
         if (dstData.length > 0) endCoords = { lat: parseFloat(dstData[0].lat), lon: parseFloat(dstData[0].lon) };
       }
 
+      let routePolyline = '';
+      let routeDistance = 0;
+      let routeDuration = 0;
+
       if (startCoords && endCoords) {
         const p1 = [startCoords.lon, startCoords.lat];
         const p2 = [endCoords.lon, endCoords.lat];
@@ -275,14 +279,45 @@ export default function App() {
         const routeData = await routeRes.json();
         
         if (routeData.code === 'Ok' && routeData.routes.length > 0) {
-          setRouteGeoJSON(routeData.routes[0].geometry);
+          const geometry = routeData.routes[0].geometry;
+          routeDistance = routeData.routes[0].distance;
+          routeDuration = routeData.routes[0].duration;
+          setRouteGeoJSON(geometry);
+          
+          if (geometry && geometry.coordinates) {
+             const coords = geometry.coordinates;
+             const step = Math.max(1, Math.floor(coords.length / 25));
+             const sampled = [];
+             for (let i = 0; i < coords.length; i += step) {
+                sampled.push(`${coords[i][1]},${coords[i][0]}`); // lat,lng
+             }
+             if (sampled.length > 0) {
+                const last = `${coords[coords.length-1][1]},${coords[coords.length-1][0]}`;
+                if (sampled[sampled.length-1] !== last) sampled.push(last);
+             }
+             if (sampled.length > 1) {
+                routePolyline = sampled.join(',');
+             }
+          }
         }
       }
 
       const advRes = await fetch(`${API_BASE_URL}/api/route-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: startName, destination: endName, mode, currentTemp: stats?.avgTemp || 32 })
+        body: JSON.stringify({ 
+          source: startName, 
+          destination: endName, 
+          mode, 
+          currentTemp: stats?.avgTemp || 32,
+          startLat: startCoords ? startCoords.lat : null,
+          startLng: startCoords ? startCoords.lon : null,
+          endLat: endCoords ? endCoords.lat : null,
+          endLng: endCoords ? endCoords.lon : null,
+          routePolyline,
+          routeDistance,
+          routeDuration
+        })
       });
       if (advRes.ok) {
         const advText = await advRes.json();
@@ -321,6 +356,7 @@ export default function App() {
           userLocation={userLocation}
           routeGeoJSON={routeGeoJSON}
           activeTab={activeTab}
+          routePOIs={routeAdvisory?.pois}
         />
         <div className={`sidebar-wrapper ${isMobile ? 'mobile' : ''} ${sidebarOpen ? 'open' : ''}`}>
           {isMobile && sidebarOpen && (
