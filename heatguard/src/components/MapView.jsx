@@ -111,6 +111,7 @@ function getInterpolatedData(lat, lng, zones) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function MapView({ center, zoom, zones, afterMode, onZoneClick, selectedZone, onMapClick, activeTab, userLocation, routeGeoJSON, routePOIs }) {
+  const { t } = useContext(LanguageContext);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const zoneLayersRef = useRef([]);

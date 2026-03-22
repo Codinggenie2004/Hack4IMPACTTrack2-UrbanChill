@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { getRisk, getAQILabel, getGreenCoverStatus, formatNumber } from '../utils/riskHelpers';
+import { LanguageContext } from '../context/LanguageContext';
 
 export default function ZoneDetail({ zone, afterMode }) {
+  const { t } = useContext(LanguageContext);
   const displayTemp = afterMode ? +(zone.temp * 0.82).toFixed(1) : zone.temp;
   const risk = getRisk(displayTemp);
   const aqiInfo = getAQILabel(zone.aqi);
@@ -27,42 +29,42 @@ export default function ZoneDetail({ zone, afterMode }) {
 
       <div className="zone-metrics">
         <div className="metric-card">
-          <span className="metric-label">Surface Temp</span>
+          <span className="metric-label">{t('surface_temp')}</span>
           <span className="metric-value" style={{ color: risk.color }}>
             {displayTemp}°C
           </span>
           {afterMode && (
             <span className="metric-sub" style={{ color: 'var(--accent)' }}>
-              ↓ from {zone.temp}°C
+              ↓ {t('from')} {zone.temp}°C
             </span>
           )}
         </div>
 
         <div className="metric-card">
-          <span className="metric-label">Green Cover</span>
+          <span className="metric-label">{t('green_cover')}</span>
           <span className="metric-value" style={{ color: greenInfo.color }}>
             {zone.greenCover}%
           </span>
-          <span className="metric-sub">{greenInfo.label}</span>
+          <span className="metric-sub">{t(greenInfo.label.toLowerCase().replace(' ', '_')) || greenInfo.label}</span>
         </div>
 
         <div className="metric-card">
-          <span className="metric-label">Air Quality</span>
+          <span className="metric-label">{t('air_quality')}</span>
           <span className="metric-value" style={{ color: aqiInfo.color }}>
             {zone.aqi}
           </span>
-          <span className="metric-sub">{aqiInfo.label}</span>
+          <span className="metric-sub">{t(aqiInfo.label.toLowerCase().replace(' ', '_')) || aqiInfo.label}</span>
         </div>
 
         <div className="metric-card">
-          <span className="metric-label">Humidity</span>
+          <span className="metric-label">{t('humidity')}</span>
           <span className="metric-value">{zone.humidity}%</span>
         </div>
 
         <div className="metric-card" style={{ gridColumn: '1 / -1' }}>
-          <span className="metric-label">Population Density</span>
+          <span className="metric-label">{t('population_density')}</span>
           <span className="metric-value">
-            {formatNumber(zone.density)} <span style={{ fontSize: '11px', color: 'var(--muted)' }}>people/km²</span>
+            {formatNumber(zone.density)} <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{t('people_km2')}</span>
           </span>
         </div>
       </div>

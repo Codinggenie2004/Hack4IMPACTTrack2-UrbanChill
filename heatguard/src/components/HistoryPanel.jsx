@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import { LanguageContext } from '../context/LanguageContext';
 import { exportReport } from '../utils/pdfExport';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export default function HistoryPanel() {
   const { user, token } = useContext(AuthContext);
+  const { t } = useContext(LanguageContext);
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -41,19 +43,19 @@ export default function HistoryPanel() {
     return (
       <div className="sidebar-empty">
         <div className="sidebar-empty-icon">🔒</div>
-        <p>Please log in to view your report history.</p>
+        <p>{t('please_login_to_view_history')}</p>
       </div>
     );
   }
 
-  if (loading) return <div className="sidebar-empty"><p>Loading history...</p></div>;
+  if (loading) return <div className="sidebar-empty"><p>{t('loading')}...</p></div>;
   if (error) return <div className="sidebar-empty"><p style={{ color: 'var(--danger)' }}>{error}</p></div>;
 
   return (
     <div className="fade-in" style={{ padding: '20px' }}>
-      <h2 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Your Saved Reports</h2>
+      <h2 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>{t('your_saved_reports')}</h2>
       {reports.length === 0 ? (
-        <p style={{ color: 'var(--muted)' }}>No reports saved yet. Analyze a zone to save one.</p>
+        <p style={{ color: 'var(--muted)' }}>{t('no_reports_saved_yet')}</p>
       ) : (
         reports.map(report => {
           let interventions = [];
